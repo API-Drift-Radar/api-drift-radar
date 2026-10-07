@@ -62,6 +62,24 @@ class SaveTests(BaselineTestCase):
         for value in ("Alice", "alice@example.com", "31337"):
             self.assertNotIn(value, text)
 
+    def test_arrays_and_unions_round_trip(self):
+        data = {"users": [{"id": 1, "name": None}, {"id": 2, "name": "A"}], "e": []}
+        structure = extract_structure(data)
+        save_baseline(self.path, URL, structure)
+        self.assertEqual(load_baseline(self.path, URL).structure, structure)
+
+    def test_rejects_bad_union_types(self):
+        for type_name in (
+            "string|",
+            "|string",
+            "string|string",
+            "string|Alice",
+            "unknown|string",
+            "",
+        ):
+            with self.subTest(type_name), self.assertRaises(ValueError):
+                save_baseline(self.path, URL, {("id",): type_name})
+
     def test_rejects_value_like_structures(self):
         for structure in (
             [],
@@ -212,6 +230,7 @@ class LoadTests(BaselineTestCase):
             "empty path": {"structure": [{"path": [], "type": "number"}]},
             "non-string path part": {"structure": [{"path": [1], "type": "number"}]},
             "unknown type": {"structure": [{"path": ["id"], "type": "Alice"}]},
+            "bad union": {"structure": [{"path": ["id"], "type": "string|Alice"}]},
             "unhashable type": {"structure": [{"path": ["id"], "type": ["number"]}]},
             "duplicate path": {
                 "structure": [

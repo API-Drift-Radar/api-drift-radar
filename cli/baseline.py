@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 from drift_engine import Structure
+from drift_engine.structure import UNKNOWN
 
 from atomic_write import write_file_atomically
 
@@ -15,9 +16,12 @@ FORMAT_VERSION = 1
 # Where baselines live by default, relative to the working directory.
 DEFAULT_DIRECTORY = os.path.join(".radar", "baselines")
 
-# Every type name drift_engine can produce. Stored structures hold only
-# these names, so response values can never end up in a baseline file.
-JSON_TYPES = frozenset({"string", "number", "boolean", "null", "object"})
+# Every type name drift_engine can produce for a single value. Stored
+# structures hold only these names (alone or joined with "|" for a field that
+# holds several types), so response values can never end up in a baseline file.
+JSON_TYPES = frozenset(
+    {"string", "number", "boolean", "null", "object", "array", UNKNOWN}
+)
 
 
 @dataclass(frozen=True)
@@ -128,8 +132,18 @@ def _check_structure(structure):
             or not all(isinstance(part, str) for part in field)
         ):
             raise ValueError(f"Invalid field path: {field!r}.")
-        if not isinstance(type_name, str) or type_name not in JSON_TYPES:
+        if not _is_valid_type(type_name):
             raise ValueError(f"Invalid type for {field!r}: {type_name!r}.")
+
+
+def _is_valid_type(type_name):
+    """True for a type name, or a "|"-joined union of distinct type names."""
+    if not isinstance(type_name, str):
+        return False
+    names = type_name.split("|")
+    if not all(name in JSON_TYPES for name in names) or len(set(names)) != len(names):
+        return False
+    return UNKNOWN not in names or names == [UNKNOWN]
 
 
 def _parse_timestamp(value):
