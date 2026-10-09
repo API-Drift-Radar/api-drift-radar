@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "api-drift-radar"
+version = "0.1.0"
+description = "API Drift Radar backend and command-line tools"
+requires-python = ">=3.10"
+dependencies = ["requests>=2.32.5,<3", "PyYAML>=6,<7"]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "hypothesis>=6"]
+
+[project.scripts]
+radar = "radar.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"radar.discovery" = ["data/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "src"]
+pythonpath = ["src"]
+addopts = "--doctest-modules"

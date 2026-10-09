@@ -1,0 +1,6 @@
+{
+  "name": "api-drift-radar-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Frontend scaffold; framework and build scripts are not yet configured."
+}
