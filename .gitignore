@@ -4,3 +4,17 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .hypothesis/
+
+# Local runtime state and secrets
+.radar/
+.env
+.env.*
+!.env.example
+baseline.json
+
+# Build and frontend output
+node_modules/
+dist/
+build/
+.next/
+.DS_Store

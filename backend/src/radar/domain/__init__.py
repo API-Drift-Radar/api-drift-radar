@@ -1,0 +1,1 @@
+"""Radar domain component."""
