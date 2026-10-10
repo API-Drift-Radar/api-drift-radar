@@ -69,8 +69,14 @@ def search_common_locations(
                             limitations=SEARCH_LIMITATIONS)
 
 
-def fetch_candidates(target, locations, budget, *, allow_loopback=False, limitations=()):
-    """Fetch each distinct source URL once, retaining every provenance record."""
+def fetch_candidates(target, locations, budget, *, allow_loopback=False, limitations=(),
+                     document_limits=None):
+    """Fetch each distinct source URL once, retaining every provenance record.
+
+    `document_limits` optionally maps a source URL to a larger per-document size
+    cap for that URL only; other URLs keep the budget's cap.
+    """
+    document_limits = document_limits or {}
     grouped = {}
     for candidate in locations:
         grouped.setdefault(candidate.source_url, []).append(candidate)
@@ -92,7 +98,8 @@ def fetch_candidates(target, locations, budget, *, allow_loopback=False, limitat
             skipped = urls[index:]
             break
 
-        result = fetch_document(url, budget, allow_loopback=allow_loopback)
+        extra = {'document_byte_limit': document_limits[url]} if url in document_limits else {}
+        result = fetch_document(url, budget, allow_loopback=allow_loopback, **extra)
         fetches.append(result)
         if result.ok:
             for candidate in grouped[url]:

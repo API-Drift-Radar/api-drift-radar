@@ -15,6 +15,7 @@ from radar.domain.discovery import ContractCandidate, DiscoveryRequest, Matching
 
 MAX_REGISTRY_BYTES = 1024 * 1024
 MAX_MAPPINGS = 100
+MAX_ALLOWED_DOCUMENT_BYTES = 32 * 1024 * 1024
 PROVIDER_LIMITATIONS = (
     "Only explicit provider mappings were searched; an unknown host is not proof of no contract.",
     "Mapping metadata is a discovery hint, not proof of product, version, or contract relevance.",
@@ -30,6 +31,7 @@ class ProviderMapping:
     provenance_url: str
     product: str | None = None
     api_version: str | None = None
+    max_document_bytes: int | None = None
 
 
 @dataclass(frozen=True)
@@ -57,7 +59,7 @@ def parse_registry(document) -> tuple[ProviderMapping, ...]:
     ids = set()
     required = {'id', 'hosts', 'spec_url', 'provenance_url'}
     for entry in entries:
-        if not isinstance(entry, dict) or not required <= set(entry) or set(entry) - required - {'product', 'api_version'}:
+        if not isinstance(entry, dict) or not required <= set(entry) or set(entry) - required - {'product', 'api_version', 'max_document_bytes'}:
             raise ValueError('Invalid provider mapping fields.')
         identifier = entry['id']
         if not isinstance(identifier, str) or not re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,79}', identifier) or identifier in ids:
@@ -79,8 +81,12 @@ def parse_registry(document) -> tuple[ProviderMapping, ...]:
             if value is not None and (not isinstance(value, str) or not value.strip()):
                 raise ValueError(f'{name} must be a nonempty string or null.')
             optional[name] = value.strip() if value is not None else None
+        allowance = entry.get('max_document_bytes')
+        if allowance is not None and (type(allowance) is not int or not 1 <= allowance <= MAX_ALLOWED_DOCUMENT_BYTES):
+            raise ValueError('max_document_bytes must be an integer from 1 to 32 MiB.')
         mappings.append(ProviderMapping(identifier, tuple(hosts), _absolute_url(entry['spec_url']),
-                                        _absolute_url(entry['provenance_url']), **optional))
+                                        _absolute_url(entry['provenance_url']), **optional,
+                                        max_document_bytes=allowance))
     return tuple(mappings)
 
 
@@ -122,6 +128,13 @@ def search_provider_mappings(
         ),),
         limitations=PROVIDER_LIMITATIONS,
     ) for mapping in mappings)
+    # A per-entry size allowance applies to that entry's spec URL only; the shared
+    # total-bytes budget still bounds the whole run. The largest allowance wins
+    # when several entries share a URL.
+    allowances = {}
+    for mapping in mappings:
+        if mapping.max_document_bytes:
+            allowances[mapping.spec_url] = max(allowances.get(mapping.spec_url, 0), mapping.max_document_bytes)
     search = fetch_candidates(target, locations, budget, allow_loopback=allow_loopback,
-                              limitations=PROVIDER_LIMITATIONS)
+                              limitations=PROVIDER_LIMITATIONS, document_limits=allowances)
     return ProviderSearchResult(mappings, search)

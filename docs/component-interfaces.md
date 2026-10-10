@@ -60,7 +60,7 @@ or relevance. The orchestrator will map fetch failures to discovery outcomes.
 
 Default `FetchLimits`: 20 request attempts (including redirects), 3-second DNS
 wait/connection timeout, 5-second read timeout, 30-second discovery deadline,
-5 MiB per document, 20 MiB total body bytes, and 3 redirects per fetch. The shared
+5 MiB per document (a verified provider mapping may allow more for its own URL), 32 MiB total body bytes, and 3 redirects per fetch. The shared
 budget counts failures, partial body reads, and future reference requests. For
 unknown-length responses, one sentinel byte may be consumed to detect overflow.
 Do not create a new budget per candidate or use one budget concurrently.
@@ -248,23 +248,80 @@ defence by itself. The planned verifier (component B) accepts a model-suggested 
 only if it literally appears in this reduced text, and every accepted URL still goes
 through the shared-budget fetcher and the validation and matching steps.
 
+## OpenAPI document validation (issue #9, gate 1)
+
+```python
+from radar.discovery.validation import validate_document
+
+result = validate_document(retrieved_bytes)          # never raises for document content
+if result.ok:
+    result.summary      # ContractSummary: version, title, info_version, server_urls, operations, ...
+    result.document     # parsed mapping, for reference capture (no second parse)
+    result.limitations  # e.g. structural-only, no operations, unexpanded path-item $refs
+else:
+    result.rejection    # ValidationRejection(stage='validation', code, reason, location)
+```
+
+Pure: bytes in, typed result out; no network or files. It judges one document's
+structure only. Reference capture and relevance matching are separate gates.
+
+Accepted: OpenAPI 3.0.x and 3.1.x as JSON or YAML (UTF-8, BOM allowed). Required:
+`openapi`, `info.title` and `info.version` (strings), `paths` for 3.0, and at least one
+of `paths`/`components`/`webhooks` for 3.1. Servers, when present, must be a list of
+objects with a string `url`. Path keys must start with `/` (or `x-`); operations are
+the `get`/`put`/`post`/`delete`/`options`/`head`/`patch`/`trace` objects. Webhook keys
+are free-form names. `info.version` is the document's own version, not the
+provider's API version. A valid document with no operations is accepted with a
+limitation, since there is nothing to monitor; callers decide what to do with it.
+
+| Rejection code | Meaning |
+|---|---|
+| `empty_document`, `size_limit_exceeded`, `unsupported_encoding` | nothing to read, over the byte limit, or not UTF-8 |
+| `html_document` | an HTML page (typical for a catch-all route) |
+| `not_json_or_yaml` | markup, binary, or a parse error (position only, content is not echoed) |
+| `not_an_object` | parses, but is a scalar or list |
+| `not_openapi` | an object without an `openapi` field (unrelated content) |
+| `unsupported_version` | Swagger/OpenAPI 2.x, 3.2+, 4+ |
+| `invalid_version` | `openapi` is missing a usable string, e.g. unquoted `3.0` in YAML |
+| `invalid_structure` | a required field or object is missing or has the wrong type; `location` is a JSON pointer |
+| `duplicate_key` | the same key twice (JSON or YAML), because parsers would disagree on the content |
+| `circular_reference` | a recursive YAML alias |
+| `nesting_limit_exceeded`, `node_limit_exceeded` | depth or value-count bounds hit |
+
+`ValidationLimits` defaults: 32 MiB, 2,000,000 values, depth 64. Measured on the
+real Stripe and GitHub specs (up to ~256K values, depth 26, parsed in 0.06 to 1.1 s),
+that leaves about 8x and 2.5x headroom. The walk is iterative and counts every visit,
+so a YAML alias expansion bomb exhausts the value budget instead of time or memory.
+
+YAML is read with PyYAML's safe loader adjusted toward YAML 1.2 core scalars:
+`on`/`no`/`yes` stay strings, unquoted dates such as `2022-11-28` stay strings, `1:30`
+and leading-zero numbers stay strings, and numeric keys such as `200:` become the
+string `"200"`. Without this, `info.version: 2022-11-28` would silently become a date.
+Unquoted `version: 1.0` is a number and is rejected, with advice to quote it.
+
+Limitations: structural validation only, not the official OpenAPI JSON Schema (every
+accepted result says so). Parsing cannot be interrupted, so the byte limit is the
+bound on parse time; with libyaml a 10 MB YAML file takes about 1 s, without it
+(pure-Python fallback) about 6 s. `$ref` targets are not read here. Checked against
+the real Stripe and GitHub specs (JSON and YAML forms give identical summaries); those
+live checks are manual and not part of the test suite.
+
 ## Issue #9 status and resume plan
 
-Done and tested (284 backend tests pass; fixtures only, no live providers):
-input normalization, result models, bounded fetcher, common-location search,
-provider-mapping search (registry empty), LLM-fallback component A (above).
+Done and tested (fixtures only; live provider checks were manual): input normalization,
+result models, bounded fetcher, common-location search, provider-mapping search with
+verified Stripe and GitHub entries, documentation-link extraction, OpenAPI document
+validation (gate 1), LLM-fallback component A.
 
-Draft, untested: `radar/discovery/documentation.py` (documentation-link discovery).
-Known gaps to fix before relying on it:
-
-1. Swagger UI parsing accepts strict JSON only. Real pages use JS literals
-   (`SwaggerUIBundle({url: '/openapi.json'})`), so they are reported unsupported.
-   Plan: a small literal scanner for top-level `url`/`urls` string values; no evaluation.
-2. Label-only links (e.g. "OpenAPI" pointing at an HTML page) are fetched. Plan: require a
-   known spec filename, or a label plus a `.json`/`.yaml`/`.yml` path.
-3. Redoc/RapiDoc `spec-url` is not extracted; candidates do not record same-origin vs
-   cross-origin; an inline import should move to the top of the module.
-4. No unit or integration tests, and no entry in this document yet.
+Documentation-link discovery (`radar/discovery/documentation.py`): extraction is fixed and
+unit-tested. It reads Swagger UI `url`/`urls` and `Redoc.init` string literals from
+JavaScript without evaluating them (dynamic or overriding configuration is reported as
+unsupported), `spec-url` attributes on Redoc/RapiDoc elements, and links with a known
+spec filename or an OpenAPI/Swagger label on a `.json`/`.yaml`/`.yml` path. Each candidate
+records whether it is same-origin or cross-origin relative to the documentation page.
+A controlled-server demo test exists (`tests/integration/test_documentation_search.py`).
+Still to do: integration scenarios for trusted-origin redirects, failed seeds, limits and
+duplicate links, and its own section in this document. External initializer scripts are not fetched (recorded limitation).
 
 Fallback plan (default off, only when a suggester is passed in; the model may only
 suggest URLs and can never certify a contract):
@@ -280,9 +337,46 @@ suggest URLs and can never certify a contract):
 - F. `search_llm_fallback(request, budget, suggester, pages)`: reuse already-fetched
   documentation pages, fetch verified suggestions through the shared `DiscoveryBudget`.
 
-Remaining after the fallback: OpenAPI validation (3.0.x/3.1.x), required `$ref`
+Remaining after the fallback: required `$ref`
 capture, relevance matching, orchestration with status precedence, end-to-end
 acceptance tests, and official-source verification of any real provider mapping.
 Open decisions: cross-origin spec links from documentation, default documentation
 seeds, whether to run every strategy or stop at the first valid candidate, and
 which provider backs the live fallback (Merge Gateway API format not yet known).
+
+## Verified provider mappings (issue #9)
+
+Each bundled entry in `backend/src/radar/discovery/data/providers.json` was checked
+against the provider's own repository and documentation, and the file was fetched
+through Radar's fetcher. Entries are never added from memory. A mapping is a
+discovery hint; the downloaded file is still validated and matched like any other.
+
+| ID | Host | Spec URL | Provenance | Checked 2026-10-09 |
+|---|---|---|---|---|
+| `stripe` | `api.stripe.com` | `raw.githubusercontent.com/stripe/openapi/master/latest/openapi.spec3.json` | `github.com/stripe/openapi/tree/master/latest` | Repo owned by `stripe`; its `latest/` README calls this the GA public spec (v1 and v2). OpenAPI 3.0.0, `servers: https://api.stripe.com/`, `info.version` `2026-09-30.endive`, 4,663,536 bytes. Radar fetched it with bytes identical to a separate download. Allowance 8 MiB. |
+| `github-rest-2022-11-28` | `api.github.com` | `raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.2022-11-28.json` | `github.com/github/rest-api-description/tree/main/descriptions/api.github.com` | GitHub's docs list `2022-11-28` as supported and as the default when no `X-GitHub-Api-Version` header is sent. OpenAPI 3.0.3, `servers: https://api.github.com`, 12,945,027 bytes, `api_version` hint `2022-11-28`. Allowance 16 MiB. |
+| `github-rest-2026-03-10` | `api.github.com` | same directory, `api.github.com.2026-03-10.json` | same | GitHub's docs list `2026-03-10` as supported. OpenAPI 3.0.3, same server, 12,905,003 bytes, `api_version` hint `2026-03-10`. Allowance 16 MiB. |
+
+Registry entries may set an optional `max_document_bytes` (integer, 1 byte to 32 MiB).
+It raises the per-document size cap for that entry's spec URL only; the shared
+total-bytes budget (default 32 MiB) still bounds the whole run, and the largest
+allowance wins when several entries share a URL. Other fetches keep the 5 MiB cap.
+
+Notes from verification:
+
+- Stripe's `latest/` README lists `spec3.json`, but the real file is
+  `openapi.spec3.json` (`latest/spec3.json` returns 404). The legacy `openapi/`
+  directory is v1 only. The URL points at the `master` branch, so the content
+  changes over time; reproducibility comes from the stored content fingerprint.
+  Its allowance leaves headroom over the current ~4.4 MiB.
+- GitHub has one entry per documented API version. All GitHub spec files report
+  `info.version` `1.1.4`, so only the file name identifies the provider version. A
+  bare `api.github.com` request therefore returns two candidates, which later
+  orchestration must report as ambiguous unless an API-version hint selects one. The
+  unversioned `api.github.com.json` is not mapped: nothing read here documents which
+  version it represents. The `main` branch URLs also move over time.
+- Both GitHub files together are ~25.9 MB, which is why the default total budget is
+  32 MiB. With the default limits, both are fetched in about one second on a normal
+  connection.
+- Live fetching is a manual check, kept out of the test suite. The tests pin the
+  registry contents and exact-host matching only.

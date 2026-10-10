@@ -12,7 +12,7 @@ class FetchLimits:
     read_timeout: float = 5.0
     discovery_timeout: float = 30.0
     max_document_bytes: int = 5 * 1024 * 1024
-    max_total_bytes: int = 20 * 1024 * 1024
+    max_total_bytes: int = 32 * 1024 * 1024
     max_redirects: int = 3
 
     def __post_init__(self):

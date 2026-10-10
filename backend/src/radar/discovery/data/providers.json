@@ -1,4 +1,31 @@
 {
   "schema_version": 1,
-  "providers": []
+  "providers": [
+    {
+      "id": "stripe",
+      "hosts": ["api.stripe.com"],
+      "product": "Stripe API",
+      "spec_url": "https://raw.githubusercontent.com/stripe/openapi/master/latest/openapi.spec3.json",
+      "provenance_url": "https://github.com/stripe/openapi/tree/master/latest",
+      "max_document_bytes": 8388608
+    },
+    {
+      "id": "github-rest-2022-11-28",
+      "hosts": ["api.github.com"],
+      "product": "GitHub REST API",
+      "api_version": "2022-11-28",
+      "spec_url": "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.2022-11-28.json",
+      "provenance_url": "https://github.com/github/rest-api-description/tree/main/descriptions/api.github.com",
+      "max_document_bytes": 16777216
+    },
+    {
+      "id": "github-rest-2026-03-10",
+      "hosts": ["api.github.com"],
+      "product": "GitHub REST API",
+      "api_version": "2026-03-10",
+      "spec_url": "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.2026-03-10.json",
+      "provenance_url": "https://github.com/github/rest-api-description/tree/main/descriptions/api.github.com",
+      "max_document_bytes": 16777216
+    }
+  ]
 }

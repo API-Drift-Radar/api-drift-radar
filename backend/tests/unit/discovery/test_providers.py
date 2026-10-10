@@ -21,8 +21,38 @@ def save(tmp_path, entries):
     return path
 
 
-def test_bundled_registry_has_no_unverified_providers():
-    assert load_registry() == ()
+# Each bundled entry was checked against the provider's own repository or
+# documentation (see docs/component-interfaces.md). Add an entry only after the
+# same check, and extend this table with its verified facts.
+GITHUB_SPECS = ('https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/'
+                'api.github.com/api.github.com.')
+GITHUB_PROVENANCE = 'https://github.com/github/rest-api-description/tree/main/descriptions/api.github.com'
+VERIFIED_PROVIDERS = {
+    'stripe': (('api.stripe.com',), None,
+               'https://raw.githubusercontent.com/stripe/openapi/master/latest/openapi.spec3.json',
+               'https://github.com/stripe/openapi/tree/master/latest', 8 * 1024 * 1024),
+    # One entry per documented API version: all share info.version 1.1.4, so the
+    # file name is the only version identity and a bare host stays ambiguous.
+    'github-rest-2022-11-28': (('api.github.com',), '2022-11-28', GITHUB_SPECS + '2022-11-28.json',
+                               GITHUB_PROVENANCE, 16 * 1024 * 1024),
+    'github-rest-2026-03-10': (('api.github.com',), '2026-03-10', GITHUB_SPECS + '2026-03-10.json',
+                               GITHUB_PROVENANCE, 16 * 1024 * 1024),
+}
+
+
+def test_bundled_registry_contains_only_verified_providers():
+    registry = load_registry()
+    assert {m.id: (m.hosts, m.api_version, m.spec_url, m.provenance_url, m.max_document_bytes)
+            for m in registry} == VERIFIED_PROVIDERS
+
+
+def test_bundled_stripe_mapping_selects_only_its_exact_host():
+    for host, expected in (('api.stripe.com', 1), ('API.STRIPE.COM', 1), ('stripe.com', 0), ('evil-api.stripe.com', 0),
+                           ('api.stripe.com.evil.test', 0), ('api.github.com', 2), ('github.com', 0)):
+        with patch('radar.discovery.providers.fetch_candidates') as fetch:
+            fetch.return_value = None
+            result = search_provider_mappings(DiscoveryRequest(host), DiscoveryBudget())
+        assert len(result.mappings) == expected, host
 
 
 @pytest.mark.parametrize('changes', [
@@ -36,6 +66,43 @@ def test_invalid_entries_rejected(changes):
     record.update(changes)
     with pytest.raises(ValueError):
         parse_registry({'schema_version': 1, 'providers': [record]})
+
+
+@pytest.mark.parametrize('value', [0, -1, True, 1.5, '1024', 32 * 1024 * 1024 + 1])
+def test_invalid_size_allowance(value):
+    with pytest.raises(ValueError):
+        parse_registry({'schema_version': 1, 'providers': [entry(max_document_bytes=value)]})
+
+
+def test_size_allowance_is_optional_and_bounded():
+    assert parse_registry({'schema_version': 1, 'providers': [entry()]})[0].max_document_bytes is None
+    allowed = parse_registry({'schema_version': 1, 'providers': [entry(max_document_bytes=32 * 1024 * 1024)]})
+    assert allowed[0].max_document_bytes == 32 * 1024 * 1024
+
+
+def test_allowance_applies_only_to_its_own_spec_url(tmp_path):
+    path = save(tmp_path, [entry(max_document_bytes=4096), dict(entry(), id='other', spec_url='https://docs.example.com/other.yaml')])
+    calls = {}
+    def fetch(url, shared, **kwargs):
+        calls[url] = kwargs
+        shared.claim_request()
+        return FetchResult(url, url, 200, 'text/html', b'<html>', datetime.now(timezone.utc), ())
+    with patch('radar.discovery.candidates.fetch_document', side_effect=fetch):
+        search_provider_mappings(DiscoveryRequest('api.example.com'), DiscoveryBudget(), registry_path=path)
+    assert calls['https://docs.example.com/payments.yaml']['document_byte_limit'] == 4096
+    assert 'document_byte_limit' not in calls['https://docs.example.com/other.yaml']
+
+
+def test_largest_allowance_wins_when_entries_share_a_url(tmp_path):
+    path = save(tmp_path, [entry(max_document_bytes=4096), dict(entry(), id='again', max_document_bytes=8192)])
+    seen = []
+    def fetch(url, shared, **kwargs):
+        seen.append(kwargs['document_byte_limit'])
+        shared.claim_request()
+        return FetchResult(url, url, 200, 'text/html', b'<html>', datetime.now(timezone.utc), ())
+    with patch('radar.discovery.candidates.fetch_document', side_effect=fetch):
+        search_provider_mappings(DiscoveryRequest('api.example.com'), DiscoveryBudget(), registry_path=path)
+    assert seen == [8192]
 
 
 @pytest.mark.parametrize('document', [{}, {'schema_version': True, 'providers': []},

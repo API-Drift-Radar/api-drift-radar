@@ -117,6 +117,32 @@ def test_document_size_limit(transport, headers):
     assert result.failure.code == 'document_size_limit'
 
 
+@pytest.mark.parametrize('headers', [{}, {'Content-Length': '6'}])
+def test_document_byte_limit_raises_the_cap_for_one_call(transport, headers):
+    transport[0].extend([Response(b'123456', headers=headers), Response(b'123456', headers=headers)])
+    budget = DiscoveryBudget(FetchLimits(max_document_bytes=5))
+    assert fetch_document('https://example.com/a', budget, document_byte_limit=6).content == b'123456'
+    # The override does not leak into later calls on the same budget.
+    assert fetch_document('https://example.com/b', budget).failure.code == 'document_size_limit'
+
+
+def test_document_byte_limit_is_still_enforced_and_total_budget_applies(transport):
+    transport[0].extend([Response(b'1234567'), Response(b'123456')])
+    budget = DiscoveryBudget(FetchLimits(max_document_bytes=5, max_total_bytes=8))
+    assert fetch_document('https://example.com/a', budget, document_byte_limit=6).failure.code == 'document_size_limit'
+    budget = DiscoveryBudget(FetchLimits(max_document_bytes=5, max_total_bytes=8))
+    transport[0].clear()
+    transport[0].extend([Response(b'123456'), Response(b'123456')])
+    assert fetch_document('https://example.com/a', budget, document_byte_limit=6).ok
+    assert fetch_document('https://example.com/b', budget, document_byte_limit=6).failure.code == 'total_size_limit'
+
+
+@pytest.mark.parametrize('value', [0, -1, True, 1.5, '6'])
+def test_invalid_document_byte_limit(value):
+    with pytest.raises(ValueError):
+        fetch_document('https://example.com', DiscoveryBudget(), document_byte_limit=value)
+
+
 def test_shared_byte_budget(transport):
     transport[0].extend([Response(b'123'), Response(b'456')])
     budget = DiscoveryBudget(FetchLimits(max_total_bytes=5))

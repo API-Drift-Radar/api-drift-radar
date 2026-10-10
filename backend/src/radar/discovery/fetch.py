@@ -114,12 +114,19 @@ def _connection(parsed, answer, timeout):
     return connection
 
 
-def fetch_document(url: str, budget: DiscoveryBudget, *, allow_loopback=False) -> FetchResult:
+def fetch_document(url: str, budget: DiscoveryBudget, *, allow_loopback=False,
+                   document_byte_limit=None) -> FetchResult:
     """Fetch using a shared run budget; loopback is opt-in for controlled tests.
+
+    `document_byte_limit` replaces the per-document size cap for this call only
+    (for a known large document). The shared total-bytes budget always applies.
 
     Failures contain no partial document. Byte usage includes partial reads from
     failed captures. Redirects each consume a request and repeat destination checks.
     """
+    if document_byte_limit is not None and (type(document_byte_limit) is not int or document_byte_limit < 1):
+        raise ValueError("Invalid document_byte_limit.")
+    document_limit = document_byte_limit or budget.limits.max_document_bytes
     current = url
     attempts = []
     status = content_type = retry_after = None
@@ -192,7 +199,7 @@ def fetch_document(url: str, budget: DiscoveryBudget, *, allow_loopback=False) -
                     expected = int(length)
                     if response.getheader("Transfer-Encoding"):
                         raise _FetchError("invalid_response", "Conflicting response framing headers.")
-                    if expected > budget.limits.max_document_bytes:
+                    if expected > document_limit:
                         raise _FetchError("document_size_limit", "Document exceeds size limit.")
                     if expected > budget.limits.max_total_bytes - budget.bytes_used:
                         raise _FetchError("total_size_limit", "Document exceeds remaining byte budget.")
@@ -204,7 +211,7 @@ def fetch_document(url: str, budget: DiscoveryBudget, *, allow_loopback=False) -
                 while True:
                     budget.remaining()
                     # One sentinel byte detects overflow for unknown-length bodies.
-                    count = min(65536, budget.limits.max_document_bytes - size + 1,
+                    count = min(65536, document_limit - size + 1,
                                 budget.limits.max_total_bytes - budget.bytes_used + 1)
                     chunk = response.read1(count)
                     budget.record_bytes(len(chunk))
@@ -212,7 +219,7 @@ def fetch_document(url: str, budget: DiscoveryBudget, *, allow_loopback=False) -
                     if not chunk:
                         break
                     size += len(chunk)
-                    if size > budget.limits.max_document_bytes:
+                    if size > document_limit:
                         raise _FetchError("document_size_limit", "Document exceeds size limit.")
                     chunks.append(chunk)
                 if expected is not None and size != expected:
