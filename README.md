@@ -20,7 +20,7 @@ The repository has been reorganized into one Python backend package and a separa
 
 **Milestone 2 — Contract discovery and monitoring: current development focus.**
 
-Discovery, monitoring, HTTP API, shared domain models, and frontend directories are scaffolded. Published OpenAPI comparison, SQLite persistence, scheduling, and the web interface are not implemented yet. There is no running HTTP API or dashboard at this stage.
+Discovery now has input normalization, shared result models, a bounded HTTP document fetcher, common-location candidate search, and an explicit provider-mapping registry with controlled-server tests. The bundled registry is currently empty; real provider entries require verification. A pure page-reduction step for an optional LLM link-suggestion fallback exists (no model is called). A documentation-link discovery draft exists but is untested. OpenAPI validation, reference capture, and matching are not implemented yet. See docs/component-interfaces.md for status and the resume plan. Monitoring, HTTP API, and frontend directories remain scaffolded. Published OpenAPI comparison, SQLite persistence, scheduling, and the web interface are not implemented yet. There is no running HTTP API or dashboard at this stage.
 
 ## Try the current CLI
 
@@ -110,7 +110,7 @@ api-drift-radar/
 ├── backend/
 │   ├── pyproject.toml          # Python dependencies and CLI entry point
 │   ├── src/radar/
-│   │   ├── discovery/          # Published contract discovery scaffold
+│   │   ├── discovery/          # Normalization, bounded fetching, candidate search, fallback input reduction
 │   │   ├── comparison/         # Existing JSON structure engine
 │   │   ├── storage/            # Existing baseline and atomic file utilities
 │   │   ├── monitoring/         # Check workflow and scheduling scaffold
@@ -119,7 +119,7 @@ api-drift-radar/
 │   │   ├── domain/             # Shared domain model scaffold
 │   │   └── config.py           # Runtime path configuration
 │   ├── migrations/             # Future SQLite migrations
-│   └── tests/                  # Unit tests; integration and fixture scaffolds
+│   └── tests/                  # Unit tests and local fetcher integration tests
 ├── web/
 │   ├── package.json            # Placeholder; no build scripts yet
 │   ├── src/
@@ -144,7 +144,7 @@ Run the existing backend tests and doctests from the repository root:
 python -m pytest -c backend/pyproject.toml backend/tests backend/src
 ```
 
-The current tests cover structural comparison, arrays, CLI behavior, JSON fetching, baseline validation, and atomic writes. They do not certify the future contract-monitoring workflow. Integration and acceptance directories are placeholders for that work.
+The current tests cover structural comparison, arrays, CLI behavior, JSON fetching, baseline validation, atomic writes, discovery input normalization, bounded document fetching, and common-location candidate search. Fetcher integration tests use a local HTTP server; no live provider is required. These tests do not certify the future contract-monitoring workflow. Full-system acceptance tests remain unimplemented.
 
 `.env.example` documents the optional `RADAR_DATA_DIR` setting for monitoring paths. Environment files are not loaded automatically; export variables in your shell. The existing CLI's default baseline path remains unchanged.
 
