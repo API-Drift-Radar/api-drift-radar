@@ -28,7 +28,7 @@ from radar.discovery.documentation import DocumentationLimits, extract_document_
 from radar.discovery.fetch import FetchResult
 from radar.discovery.formats import DOCUMENTATION_ONLY, identify_description, recognize_artifact
 from radar.discovery.input import DiscoveryInputError, normalize_target
-from radar.discovery.limits import BUDGET_STOP_CODES, DiscoveryBudget
+from radar.discovery.limits import BUDGET_STOP_CODES, BudgetExceeded, DiscoveryBudget
 from radar.discovery.link_scoring import MIN_CROSS_ORIGIN_SCORE, MIN_SCORE, score_link
 from radar.discovery.links import html_typed_links, parse_link_header
 from radar.discovery.matching import hosts_related
@@ -51,8 +51,8 @@ P_VIEWER_CONFIG, P_SCRIPT, P_LLM, P_DOCUMENTATION_TYPED, P_ORIGIN_ROOT, P_NAVIGA
 
 @dataclass(frozen=True)
 class NavigationLimits:
-    max_pages: int = 8  # pages, scripts and configuration files fetched while navigating (not the contracts themselves)
-    max_depth: int = 3  # hops from the start for pages; contracts, scripts and configuration may be one hop further
+    max_pages: int = 16  # pages, scripts and configuration files fetched while navigating (not the contracts themselves)
+    max_depth: int = 4  # hops from the start for pages; contracts, scripts and configuration may be one hop further
     max_links_per_page: int = 6  # navigation links followed from any one page
     max_leads: int = 80  # leads ever queued in one run
     max_catalog_entries: int = 20
@@ -202,8 +202,34 @@ class Navigator:
                 self.add(f'{self.origin}{context}{probe}', 'description', 'framework_probe', None, 0, P_PROBE + index)
 
     # -- running ---------------------------------------------------------------------------------
-    def run(self):
+    def can_consult_model(self):
+        """Do not pay for suggestions when there is no room to pursue them."""
+        try:
+            remaining = self.budget.remaining()
+        except BudgetExceeded:
+            return False
+        return (not self._stopped and remaining >= 10
+                and self.budget.navigation_remaining() >= 3
+                and self.budget.bytes_used < self.budget.limits.max_total_bytes
+                and self._documents < self.limits.max_pages
+                and len(self._leads) < self.limits.max_leads)
+
+    def actionable_model_link(self, url, depth):
+        key = _key(url)
+        host = _host(url)
+        return (key is not None and key not in self._visited and key not in self._leads
+                and depth <= self.limits.max_depth
+                and (host in self.budget.hosts or len(self.budget.hosts) < self.budget.limits.max_hosts))
+
+    def run(self, *, pause_for_model=False):
+        """An optional soft pause preserves the queue for model-guided navigation."""
         while self._heap and not self._stopped:
+            if pause_for_model and self._pages and (
+                self._heap[0][0] >= P_PROBE
+                or self.budget.navigation_remaining() <= 6
+                or self._documents >= self.limits.max_pages - 2
+            ):
+                break
             _, _, key = heapq.heappop(self._heap)
             lead = self._leads[key]
             if key in self._visited:

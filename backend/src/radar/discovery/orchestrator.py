@@ -3,8 +3,8 @@
 Strategies run in a fixed order under ONE shared budget (requests, bytes, time, hosts) and one fetch cache:
 an explicit specification URL, provider mappings, common locations, documentation pages, then bounded
 navigation (typed links, an RFC 9727 catalogue, viewer configuration and, when nothing has been accepted yet,
-the origin's own pages and framework probes), and finally, if enabled, a language model choosing among links it
-was shown. All of them run, so an ambiguity in a later strategy is not hidden by an earlier hit. Every
+the origin's own pages and framework probes), with an optional language model choosing among observed links before
+framework probes or navigation exhaustion. All of them run, so an ambiguity in a later strategy is not hidden by an earlier hit. Every
 retrieved document is judged on its own (validation, matching, reference capture); this module only combines
 the verdicts. It never picks between valid contracts, and a model never decides acceptance.
 """
@@ -76,7 +76,7 @@ def _is_non_spec(candidate_method, evaluation):
 def _llm_note(fallback, ledger, pages):
     if not pages:
         return 'The language-model fallback was enabled but no documentation page was available to read.'
-    made = [c for c in fallback.calls if c.outcome not in ('cached', 'no_relevant_items', 'refused', 'error')]
+    made = [c for c in fallback.calls if c.outcome not in ('cached', 'no_relevant_items', 'refused', 'error', 'skipped_capacity')]
     tokens_in = sum(c.input_tokens or 0 for c in made)
     tokens_out = sum(c.output_tokens or 0 for c in made)
     total = ledger.summary()
@@ -220,8 +220,8 @@ def discover(
         navigator = Navigator(request, budget, limits=navigation_limits, allow_loopback=allow_loopback, cache=cache,
                               explore=not accepted)
 
-        def run_navigation():
-            navigator.run()
+        def run_navigation(*, pause_for_model=False):
+            navigator.run(pause_for_model=pause_for_model)
             result = navigator.result()
             for mechanism, fetch in result.fetch_log[logged['nav']:]:
                 attempt, category = _attempt(f'navigation:{mechanism}', fetch, ignorable_blocks=True)
@@ -233,19 +233,29 @@ def discover(
             return result
 
         navigator.seed(seed_pages)
-        navigation = run_navigation()
+        navigation = run_navigation(pause_for_model=llm_suggester is not None and not accepted)
 
         if not accepted and llm_suggester is not None:
             ledger = llm_ledger or CostLedger()
             pages = sorted((p.fetch for p in navigation.pages),
-                           key=lambda f: -sum(1 for i in reduce_page(f).items if i.id))
-            fallback = search_llm_fallback(request, pages, llm_suggester, ledger, depth_of=navigator.depth_of)
+                           key=lambda f: -sum(1 for i in reduce_page(f).items
+                                              if i.id and i.url and navigator.actionable_model_link(
+                                                  i.url, navigator.depth_of(f.final_url) + 1)))
+            fallback = search_llm_fallback(request, pages, llm_suggester, ledger, depth_of=navigator.depth_of,
+                                           can_consult=navigator.can_consult_model,
+                                           eligible_link=navigator.actionable_model_link)
             for call in fallback.calls:
                 detail = call.detail + '; ' if call.detail else ''
                 attempts.append(DiscoveryAttempt(call.page_url, 'llm_fallback', call.outcome, f'{detail}${call.usd:.6f}'))
             navigator.add_leads(fallback.leads)
             navigation = run_navigation()
             llm_note = _llm_note(fallback, ledger, pages)
+            if any(c.outcome == 'skipped_capacity' for c in fallback.calls):
+                llm_note += ' Model consultation was skipped because navigation capacity was insufficient.'
+        else:
+            # A contract may have been accepted before a soft pause. Finish the
+            # deterministic queue so explicit alternatives still get evaluated.
+            navigation = run_navigation()
 
         artifacts.extend(navigation.artifacts)
         trail.extend(navigation.trail)

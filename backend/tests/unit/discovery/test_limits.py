@@ -81,3 +81,12 @@ def test_invalid_new_limits(kwargs):
 
 def test_every_stop_code_is_known_in_one_place():
     assert BUDGET_STOP_CODES == {'request_limit', 'navigation_limit', 'host_limit', 'deadline_exceeded', 'total_size_limit'}
+
+
+def test_default_budget_has_room_for_navigation_and_reference_capture():
+    from radar.discovery.navigation import NavigationLimits
+    limits = FetchLimits()
+    assert (limits.max_requests, limits.discovery_timeout, limits.max_hosts) == (40, 90, 8)
+    budget = DiscoveryBudget(limits)
+    assert budget.navigation_remaining() == 30 and limits.reserve == 10
+    assert (NavigationLimits().max_pages, NavigationLimits().max_depth) == (16, 4)

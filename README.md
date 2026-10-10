@@ -136,6 +136,16 @@ api-drift-radar/
 
 The planned monitoring database is `.radar/radar.db`; it will be created when database initialization is implemented. Contract artifacts will live under `.radar/contracts/`.
 
+## Discovery search budget
+
+Discovery defaults to 40 requests over 90 seconds, reserving 10 requests for
+contract references. Navigation can inspect 16 pages/assets across up to 8 hosts,
+with a page depth of 4. The optional LLM now helps before speculative probes or
+navigation exhaustion, using only observed, unexplored links. Calls are skipped
+when there is insufficient capacity to follow suggestions. Enable it explicitly
+with `python -m radar.discovery TARGET --llm`; the existing two-call limit and
+$5 cumulative discovery cap still apply. Deterministic discovery needs no model.
+
 ## Development and verification
 
 Run the existing backend tests and doctests from the repository root:

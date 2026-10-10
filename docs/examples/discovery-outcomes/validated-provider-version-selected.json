@@ -254,8 +254,8 @@
       "leads_unexamined": 0,
       "unexamined": [],
       "requests_used": 8,
-      "requests_limit": 20,
-      "reserved_for_references": 5,
+      "requests_limit": 40,
+      "reserved_for_references": 10,
       "hosts_contacted": []
     }
   }

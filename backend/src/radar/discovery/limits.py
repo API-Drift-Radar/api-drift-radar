@@ -13,14 +13,14 @@ BUDGET_STOP_CODES = frozenset({"request_limit", "navigation_limit", "host_limit"
 
 @dataclass(frozen=True)
 class FetchLimits:
-    max_requests: int = 20
+    max_requests: int = 40
     connect_timeout: float = 3.0
     read_timeout: float = 5.0
-    discovery_timeout: float = 30.0
+    discovery_timeout: float = 90.0
     max_document_bytes: int = 5 * 1024 * 1024
     max_total_bytes: int = 32 * 1024 * 1024
     max_redirects: int = 3
-    max_hosts: int = 6  # distinct host:port pairs one run may contact
+    max_hosts: int = 8  # distinct host:port pairs one run may contact
     # Requests held back for capturing the selected contract's references; navigation cannot spend them.
     # None means a quarter of max_requests.
     reference_reserve: int | None = None

@@ -58,8 +58,8 @@ never expose partial content. HTTP 429 responses retain `Retry-After`; there are
 no automatic retries. A successful HTTP fetch does not establish OpenAPI validity
 or relevance. The orchestrator will map fetch failures to discovery outcomes.
 
-Default `FetchLimits`: 20 request attempts (including redirects), 3-second DNS
-wait/connection timeout, 5-second read timeout, 30-second discovery deadline,
+Default `FetchLimits`: 40 request attempts (including redirects), 3-second DNS
+wait/connection timeout, 5-second read timeout, 90-second discovery deadline,
 5 MiB per document (a verified provider mapping may allow more for its own URL), 32 MiB total body bytes, and 3 redirects per fetch. The shared
 budget counts failures, partial body reads, and future reference requests. For
 unknown-length responses, one sentinel byte may be consumed to detect overflow.
@@ -586,9 +586,9 @@ in the trail and **a link alone is never provenance or applicability** (see poli
 matching hint: discovery issues GET requests for documentation and metadata and never calls the target endpoint. Pages and
 fetched assets are untrusted data and are parsed, never executed.
 
-`NavigationLimits` (defaults): 8 pages/scripts/configurations, depth 3 for pages (contracts, scripts and configuration may be one
+`NavigationLimits` (defaults): 16 pages/scripts/configurations, depth 4 for pages (contracts, scripts and configuration may be one
 hop further), 6 links per page, 80 leads, 20 catalogue entries, 4 catalogues, 2 initializers per page, 256 KiB per script or
-configuration file, 2 probe contexts. `FetchLimits` gained `max_hosts` (6 distinct host:port pairs) and `reference_reserve` (default a
+configuration file, 2 probe contexts. `FetchLimits` gained `max_hosts` (8 distinct host:port pairs) and `reference_reserve` (default a
 quarter of `max_requests`): navigation, configuration fetching and model-chosen links all share the request, byte, time and host
 budget, and the reserve can be spent only by reference capture. `FetchLimits.deep()` is the research proposal (60 requests, 120 s).
 
@@ -754,3 +754,32 @@ Notes from verification:
   connection.
 - Live fetching is a manual check, kept out of the test suite. The tests pin the
   registry contents and exact-host matching only.
+
+## Navigation capacity and earlier model guidance (October 10, 2026)
+
+Default discovery now permits 40 HTTP requests and 90 seconds, with 10 requests
+reserved for reference capture. Navigation allows 16 pages/scripts/configurations,
+page depth 4 (description/configuration assets may go one hop further), and 8
+host:port pairs. The existing explicit deep preset remains 60 requests/120 seconds.
+These are bounded engineering defaults, not measured guarantees of provider coverage.
+
+When an optional suggester is configured, the navigator can pause without discarding
+its queue. It pauses before framework probes, or once six navigation requests or
+only two page slots remain, provided it has a page to show the model. Any contracts
+already retrieved are evaluated first. If none passes, the model sees observed
+links that have not already been visited or queued and that fit host/depth limits.
+Pages with actionable links are preferred. Suggestions enter the same queue ahead
+of speculative probes; deterministic traversal resumes afterward, including when
+the model fails or has nothing useful to suggest. Existing ambiguity handling and
+contract acceptance rules are unchanged.
+
+Before each model consultation, at least three navigation requests, ten seconds,
+and page/lead/byte capacity must remain. Otherwise the attempt is recorded as
+`skipped_capacity`, and no model call is made. A model call can itself consume the
+remaining wall-clock time; the shared deadline still governs subsequent fetching.
+This capacity check is not a promise that a suggestion will reach a contract.
+
+Paid use remains explicitly enabled with `--llm` or an injected `llm_suggester`.
+The model still cannot invent accepted URLs or validate contracts. The two-call
+per-run limit, recorded-response test mode, and persistent $5 discovery cost cap
+are unchanged. No live model calls were needed to test this change.

@@ -9,7 +9,7 @@ certify a contract or supply a URL. Every call is authorised against the spendin
 the cost ledger afterwards.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable, Sequence
 
 from radar.discovery.fetch import FetchResult
@@ -58,6 +58,8 @@ def search_llm_fallback(
     reduction_limits: ReductionLimits | None = None,
     response_cache: dict | None = None,
     depth_of: Callable[[str], int] = lambda url: 0,
+    can_consult: Callable[[], bool] = lambda: True,
+    eligible_link: Callable[[str, int], bool] | None = None,
 ) -> FallbackResult:
     """Consult the model about each page and return the links it chose, as leads. Nothing is fetched here.
 
@@ -68,7 +70,15 @@ def search_llm_fallback(
     response_cache = {} if response_cache is None else response_cache
     calls, leads = [], {}
     for page in pages[:max_pages]:
+        if not can_consult():
+            calls.append(FallbackCall(page.final_url, 'skipped_capacity',
+                                      'Insufficient navigation capacity to pursue model suggestions; no call made.'))
+            break
         reduced = reduce_page(page, reduction_limits)
+        if eligible_link is not None:
+            items = tuple(item for item in reduced.items
+                          if not item.url or eligible_link(item.url, depth_of(page.final_url) + 1))
+            reduced = replace(reduced, items=items, text='\n'.join(item.text for item in items))
         if not any(item.id for item in reduced.items):  # nothing the model could choose
             calls.append(FallbackCall(page.final_url, 'no_relevant_items',
                                       '; '.join(n.code for n in reduced.notes) or 'nothing on the page looked like a specification link'))
@@ -108,6 +118,8 @@ def search_llm_fallback(
         calls.append(FallbackCall(page.final_url, outcome_hint or outcome, detail, suggestions.urls, suggestions.rejected,
                                   usd, reply.usage.input_tokens, reply.usage.output_tokens))
         for url in suggestions.urls:
+            if eligible_link is not None and not eligible_link(url, depth_of(page.final_url) + 1):
+                continue
             leads.setdefault(url, Lead(url, 'page', 'llm_suggestion', page.final_url, depth_of(page.final_url) + 1, P_LLM))
 
     return FallbackResult(tuple(leads.values()), tuple(calls))

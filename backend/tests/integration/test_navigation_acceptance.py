@@ -473,7 +473,7 @@ def test_the_command_line_json_includes_the_optional_details_and_deep_widens_the
         assert main([base, '--allow-loopback', '--json', '--deep']) == 1
         deep = json.loads(capsys.readouterr().out)
     assert shallow['status'] == 'inaccessible' and shallow['artifacts'][0]['category'] == 'authentication_required'
-    assert shallow['coverage']['requests_limit'] == 20 and deep['coverage']['requests_limit'] == 60
+    assert shallow['coverage']['requests_limit'] == 40 and deep['coverage']['requests_limit'] == 60
     assert deep['coverage']['reserved_for_references'] == 15 and isinstance(deep['trail'], list)
 
 
@@ -485,3 +485,27 @@ def test_the_command_line_names_a_cut_short_search(capsys):
         main([base, '--allow-loopback', '--max-requests', '12'])
     out = capsys.readouterr().out
     assert 'CUT SHORT by navigation_limit' in out and 'cut short by its limits' in out
+
+
+def test_early_model_guidance_reaches_contract_before_probes_on_small_budget():
+    routes = {}
+    with serve(routes) as (base, log):
+        indirect_site(routes, base)
+        model = Model('{"choices": ["L1"]}')
+        outcome = run(base, llm_suggester=model, limits=FetchLimits(max_requests=16))
+    assert outcome.status is V
+    assert len(model.prompts) == 1
+    assert log.index('/portal/9f3a') < log.index('/v3/api-docs')
+    assert '/files/orders-openapi.json' in log
+
+
+def test_exhausted_navigation_skips_model_instead_of_spending_money():
+    routes = {}
+    with serve(routes) as (base, log):
+        indirect_site(routes, base)
+        model = Model('{"choices": ["L1"]}')
+        ledger = CostLedger()
+        outcome = run(base, llm_suggester=model, llm_ledger=ledger, limits=FetchLimits(max_requests=8))
+    assert model.prompts == [] and ledger.spent_usd() == 0
+    assert any(a.outcome == 'skipped_capacity' for a in outcome.attempts)
+    assert not outcome.coverage.complete
