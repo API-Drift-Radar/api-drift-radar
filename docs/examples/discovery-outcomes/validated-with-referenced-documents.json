@@ -1,0 +1,168 @@
+{
+  "description": "A multi-file contract: the root plus the two files it depends on, each listed with size and SHA-256.",
+  "request": {
+    "target": "api.acme.com"
+  },
+  "outcome": {
+    "status": "validated",
+    "package": {
+      "source_url": "https://api.acme.com/openapi.json",
+      "discovery_method": "common_location",
+      "discovery_source": "https://api.acme.com/openapi.json",
+      "content_fingerprint": "eb6435b81d02c6c3e1a4ad46f3a85671247adcf1ee0cd117282855e2f4523993",
+      "openapi_version": "3.0.3",
+      "title": "Acme Pets API",
+      "info_version": "1.0.0",
+      "server_urls": [
+        "https://api.acme.com/v1"
+      ],
+      "path_count": 1,
+      "operation_count": 1,
+      "root_document": {
+        "url": "https://api.acme.com/openapi.json",
+        "media_type": "application/json",
+        "size_bytes": 511,
+        "sha256": "6a8b20cb81d4b3d4cf1a8bad6241d574c1471fad8e959a0d208353ffaa58d5de",
+        "retrieved_at": "2026-10-09T12:00:00Z"
+      },
+      "referenced_documents": [
+        {
+          "url": "https://api.acme.com/schemas/pet.json",
+          "media_type": "application/json",
+          "size_bytes": 120,
+          "sha256": "036a47ad51f31c530a54ff10e54e2a0482fcd620f9cc45c84712cfbdb922b837",
+          "retrieved_at": "2026-10-09T12:00:00Z"
+        },
+        {
+          "url": "https://api.acme.com/schemas/owner.json",
+          "media_type": "application/json",
+          "size_bytes": 88,
+          "sha256": "a3d32cc14adfae1b09f961f9b5b3493e7edbdb39e23123ea9966e44955a86e7a",
+          "retrieved_at": "2026-10-09T12:00:00Z"
+        }
+      ],
+      "evidence": [
+        {
+          "criterion": "server_host",
+          "outcome": "match",
+          "description": "Server 'https://api.acme.com/v1' declares api.acme.com, the same host as the target host api.acme.com.",
+          "source_url": "https://api.acme.com/openapi.json"
+        },
+        {
+          "criterion": "operation",
+          "outcome": "not_requested",
+          "description": "No endpoint path or method was given.",
+          "source_url": "https://api.acme.com/openapi.json"
+        },
+        {
+          "criterion": "api_version",
+          "outcome": "not_requested",
+          "description": "No API version was requested.",
+          "source_url": "https://api.acme.com/openapi.json"
+        },
+        {
+          "criterion": "product",
+          "outcome": "not_requested",
+          "description": "No product was requested.",
+          "source_url": "https://api.acme.com/openapi.json"
+        },
+        {
+          "criterion": "provenance",
+          "outcome": "match",
+          "description": "The contract is served from api.acme.com, the same host as the target host api.acme.com.",
+          "source_url": "https://api.acme.com/openapi.json"
+        }
+      ],
+      "limitations": [
+        "Structural validation only; the document was not checked against the official OpenAPI JSON Schema.",
+        "Matching applies explicit rules to the contract text and its origin; it does not prove identity.",
+        "Only $ref references are followed; operationRef, discriminator.mapping and externalValue targets are not captured."
+      ]
+    },
+    "alternatives": [],
+    "candidates": [
+      {
+        "source_url": "https://api.acme.com/openapi.json",
+        "discovery_method": "common_location",
+        "discovery_source": "https://api.acme.com/openapi.json",
+        "accepted": true,
+        "rejections": [],
+        "evidence": [
+          {
+            "criterion": "server_host",
+            "outcome": "match",
+            "description": "Server 'https://api.acme.com/v1' declares api.acme.com, the same host as the target host api.acme.com.",
+            "source_url": "https://api.acme.com/openapi.json"
+          },
+          {
+            "criterion": "operation",
+            "outcome": "not_requested",
+            "description": "No endpoint path or method was given.",
+            "source_url": "https://api.acme.com/openapi.json"
+          },
+          {
+            "criterion": "api_version",
+            "outcome": "not_requested",
+            "description": "No API version was requested.",
+            "source_url": "https://api.acme.com/openapi.json"
+          },
+          {
+            "criterion": "product",
+            "outcome": "not_requested",
+            "description": "No product was requested.",
+            "source_url": "https://api.acme.com/openapi.json"
+          },
+          {
+            "criterion": "provenance",
+            "outcome": "match",
+            "description": "The contract is served from api.acme.com, the same host as the target host api.acme.com.",
+            "source_url": "https://api.acme.com/openapi.json"
+          }
+        ],
+        "limitations": [
+          "Structural validation only; the document was not checked against the official OpenAPI JSON Schema.",
+          "Matching applies explicit rules to the contract text and its origin; it does not prove identity.",
+          "Only $ref references are followed; operationRef, discriminator.mapping and externalValue targets are not captured."
+        ]
+      }
+    ],
+    "attempts": [
+      {
+        "url": "https://api.acme.com/openapi.json",
+        "stage": "common_location",
+        "outcome": "retrieved",
+        "reason": null
+      },
+      {
+        "url": "https://api.acme.com/openapi.yaml",
+        "stage": "common_location",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/swagger.json",
+        "stage": "common_location",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/docs",
+        "stage": "documentation_page",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/documentation",
+        "stage": "documentation_page",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      }
+    ],
+    "limitations": [
+      "Discovery is bounded: it tried provider mappings, common specification locations and links in documentation pages, within fixed request, time and size limits.",
+      "Structural validation only; the document was not checked against the official OpenAPI JSON Schema.",
+      "Matching applies explicit rules to the contract text and its origin; it does not prove identity.",
+      "Only $ref references are followed; operationRef, discriminator.mapping and externalValue targets are not captured."
+    ]
+  }
+}

@@ -1,0 +1,154 @@
+{
+  "description": "One contract found at a guessed location, checked against an operation (GET /v1/pets).",
+  "request": {
+    "target": "https://api.acme.com/v1/pets",
+    "method": "GET"
+  },
+  "outcome": {
+    "status": "validated",
+    "package": {
+      "source_url": "https://api.acme.com/openapi.json",
+      "discovery_method": "common_location",
+      "discovery_source": "https://api.acme.com/openapi.json",
+      "content_fingerprint": "9630265182fe73a77886245b2835ebc542bb655c3a97de29a9ab26253b7730d2",
+      "openapi_version": "3.0.3",
+      "title": "Acme Pets API",
+      "info_version": "1.0.0",
+      "server_urls": [
+        "https://api.acme.com/v1"
+      ],
+      "path_count": 2,
+      "operation_count": 4,
+      "root_document": {
+        "url": "https://api.acme.com/openapi.json",
+        "media_type": "application/json",
+        "size_bytes": 301,
+        "sha256": "9a1779068d473c91eb667bbc68a34f031ee172351f95aa4e408c83648a9d16b5",
+        "retrieved_at": "2026-10-09T12:00:00Z"
+      },
+      "referenced_documents": [],
+      "evidence": [
+        {
+          "criterion": "server_host",
+          "outcome": "match",
+          "description": "Server 'https://api.acme.com/v1' declares api.acme.com, the same host as the target host api.acme.com.",
+          "source_url": "https://api.acme.com/openapi.json"
+        },
+        {
+          "criterion": "operation",
+          "outcome": "match",
+          "description": "GET /pets is defined for GET /v1/pets after removing the server base path /v1.",
+          "source_url": "https://api.acme.com/openapi.json"
+        },
+        {
+          "criterion": "api_version",
+          "outcome": "not_requested",
+          "description": "No API version was requested.",
+          "source_url": "https://api.acme.com/openapi.json"
+        },
+        {
+          "criterion": "product",
+          "outcome": "not_requested",
+          "description": "No product was requested.",
+          "source_url": "https://api.acme.com/openapi.json"
+        },
+        {
+          "criterion": "provenance",
+          "outcome": "match",
+          "description": "The contract is served from api.acme.com, the same host as the target host api.acme.com.",
+          "source_url": "https://api.acme.com/openapi.json"
+        }
+      ],
+      "limitations": [
+        "Structural validation only; the document was not checked against the official OpenAPI JSON Schema.",
+        "Matching applies explicit rules to the contract text and its origin; it does not prove identity.",
+        "Only $ref references are followed; operationRef, discriminator.mapping and externalValue targets are not captured."
+      ]
+    },
+    "alternatives": [],
+    "candidates": [
+      {
+        "source_url": "https://api.acme.com/openapi.json",
+        "discovery_method": "common_location",
+        "discovery_source": "https://api.acme.com/openapi.json",
+        "accepted": true,
+        "rejections": [],
+        "evidence": [
+          {
+            "criterion": "server_host",
+            "outcome": "match",
+            "description": "Server 'https://api.acme.com/v1' declares api.acme.com, the same host as the target host api.acme.com.",
+            "source_url": "https://api.acme.com/openapi.json"
+          },
+          {
+            "criterion": "operation",
+            "outcome": "match",
+            "description": "GET /pets is defined for GET /v1/pets after removing the server base path /v1.",
+            "source_url": "https://api.acme.com/openapi.json"
+          },
+          {
+            "criterion": "api_version",
+            "outcome": "not_requested",
+            "description": "No API version was requested.",
+            "source_url": "https://api.acme.com/openapi.json"
+          },
+          {
+            "criterion": "product",
+            "outcome": "not_requested",
+            "description": "No product was requested.",
+            "source_url": "https://api.acme.com/openapi.json"
+          },
+          {
+            "criterion": "provenance",
+            "outcome": "match",
+            "description": "The contract is served from api.acme.com, the same host as the target host api.acme.com.",
+            "source_url": "https://api.acme.com/openapi.json"
+          }
+        ],
+        "limitations": [
+          "Structural validation only; the document was not checked against the official OpenAPI JSON Schema.",
+          "Matching applies explicit rules to the contract text and its origin; it does not prove identity.",
+          "Only $ref references are followed; operationRef, discriminator.mapping and externalValue targets are not captured."
+        ]
+      }
+    ],
+    "attempts": [
+      {
+        "url": "https://api.acme.com/openapi.json",
+        "stage": "common_location",
+        "outcome": "retrieved",
+        "reason": null
+      },
+      {
+        "url": "https://api.acme.com/openapi.yaml",
+        "stage": "common_location",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/swagger.json",
+        "stage": "common_location",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/docs",
+        "stage": "documentation_page",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/documentation",
+        "stage": "documentation_page",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      }
+    ],
+    "limitations": [
+      "Discovery is bounded: it tried provider mappings, common specification locations and links in documentation pages, within fixed request, time and size limits.",
+      "Structural validation only; the document was not checked against the official OpenAPI JSON Schema.",
+      "Matching applies explicit rules to the contract text and its origin; it does not prove identity.",
+      "Only $ref references are followed; operationRef, discriminator.mapping and externalValue targets are not captured."
+    ]
+  }
+}

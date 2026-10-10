@@ -460,6 +460,43 @@ text never says it (see the matching limits).
 Not done: a direct-URL strategy (a target that is itself a spec URL), the optional LLM fallback,
 and no separate status for "search cut short".
 
+## Issue #9 acceptance evidence
+
+Run: `python -m pytest -c backend/pyproject.toml backend/tests/integration/test_discovery_acceptance.py -v`
+(33 scenarios, ~2 s). They use real local HTTP servers and the real fetcher, with nothing patched;
+`allow_loopback=True` is the only concession. A fixture-based result, not a claim about any provider.
+
+| Acceptance criterion | Scenarios |
+|---|---|
+| A controlled API with a discoverable contract returns a validated candidate with source and evidence | common location, documentation link + redirect, provider mapping |
+| Invalid or unrelated documents are rejected with reasons | Swagger 2.0, wrong server host, unsupported version, invalid structure, duplicate keys, missing operation/version/product; unrelated JSON recorded as a miss with its reason |
+| Multiple plausible contracts produce an ambiguous result | two contracts, explicit selection, dated provider versions until a version is supplied, JSON+YAML copies merged with both locations kept |
+| Inaccessible sources and unsuccessful discovery are distinguishable | 503/403/429/500, refused connection, slow server, private address refused; catch-all pages and 404s are `not_found` |
+| Required external references are captured; incomplete contracts are not successes | multi-file capture with original bytes, missing file, broken internal reference, cross-origin refusal and opt-in |
+| Explicit request, timeout and traversal limits | request budget, document size, redirects, reference depth and count, shared byte budget, deadline |
+| Deterministic workflow without an LLM | only the controlled host is resolved; no model client is imported; repeated runs agree |
+
+Matching quality is measured separately by `tests/unit/discovery/test_matching_corpus.py` (`-s` prints the
+table): 39 labeled look-alike and legitimate cases, 0 false accepts and 0 false rejects, plus 4 known
+limitations pinned so a rule change must update this list on purpose:
+
+- A sub-product hint absent from a multi-product contract's text is rejected (Stripe `billing`).
+- A provider whose API domain differs entirely from its main domain is rejected without a mapping that
+  declares the API host.
+- A product written differently (`ecommerce` vs `E-Commerce`) is rejected (whole-word match).
+- A shared hosting suffix as the target (`github.io`) relates to every host beneath it (no public-suffix list).
+
+Not demonstrated by fixtures and not claimed: behaviour against providers other than the Stripe, GitHub and
+`api.weather.gov` spot checks done by hand on 2026-10-09.
+
+## Discovery result JSON for the API and web interface
+
+`radar.discovery.serialization.outcome_to_dict(outcome)` returns a JSON-ready view of a `DiscoveryOutcome`
+(also `package_to_dict`, `candidate_to_dict`). Contract text is never inlined: a package carries URL, size,
+SHA-256 and a content fingerprint, and rejection strings are split into `{stage, code, reason}`. Nine
+generated samples with field notes are in `docs/examples/discovery-outcomes/` (see its README); a test fails
+if they drift from the code. The field names are a proposal for the API owner, not a final wire format.
+
 ## Issue #9 status and resume plan
 
 Done and tested (fixtures only; live provider checks were manual): input normalization,

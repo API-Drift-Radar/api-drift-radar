@@ -1,0 +1,163 @@
+{
+  "description": "Documents were found but none qualified: one fails validation, one fails matching, one has an incomplete reference. Each rejection names its stage and code.",
+  "request": {
+    "target": "https://api.acme.com/v1/pets",
+    "method": "GET"
+  },
+  "outcome": {
+    "status": "rejected",
+    "package": null,
+    "alternatives": [],
+    "candidates": [
+      {
+        "source_url": "https://api.acme.com/openapi.json",
+        "discovery_method": "common_location",
+        "discovery_source": "https://api.acme.com/openapi.json",
+        "accepted": false,
+        "rejections": [
+          {
+            "stage": "matching",
+            "code": "server_host_mismatch",
+            "reason": "None of the declared server hosts (api.other.test) is related to the target host api.acme.com. No operation GET /v1/pets is defined among 4 operations."
+          }
+        ],
+        "evidence": [
+          {
+            "criterion": "server_host",
+            "outcome": "mismatch",
+            "description": "None of the declared server hosts (api.other.test) is related to the target host api.acme.com.",
+            "source_url": "https://api.acme.com/openapi.json"
+          },
+          {
+            "criterion": "operation",
+            "outcome": "mismatch",
+            "description": "No operation GET /v1/pets is defined among 4 operations.",
+            "source_url": "https://api.acme.com/openapi.json"
+          },
+          {
+            "criterion": "api_version",
+            "outcome": "not_requested",
+            "description": "No API version was requested.",
+            "source_url": "https://api.acme.com/openapi.json"
+          },
+          {
+            "criterion": "product",
+            "outcome": "not_requested",
+            "description": "No product was requested.",
+            "source_url": "https://api.acme.com/openapi.json"
+          },
+          {
+            "criterion": "provenance",
+            "outcome": "match",
+            "description": "The contract is served from api.acme.com, the same host as the target host api.acme.com.",
+            "source_url": "https://api.acme.com/openapi.json"
+          }
+        ],
+        "limitations": [
+          "OpenAPI validity and relevance have not been assessed."
+        ]
+      },
+      {
+        "source_url": "https://api.acme.com/openapi.yaml",
+        "discovery_method": "common_location",
+        "discovery_source": "https://api.acme.com/openapi.yaml",
+        "accepted": false,
+        "rejections": [
+          {
+            "stage": "reference_capture",
+            "code": "reference_unavailable",
+            "reason": "Could not retrieve https://api.acme.com/gone.json: http_error (HTTP status 404.)"
+          }
+        ],
+        "evidence": [
+          {
+            "criterion": "server_host",
+            "outcome": "match",
+            "description": "Server 'https://api.acme.com/v1' declares api.acme.com, the same host as the target host api.acme.com.",
+            "source_url": "https://api.acme.com/openapi.yaml"
+          },
+          {
+            "criterion": "operation",
+            "outcome": "match",
+            "description": "GET /pets is defined for GET /v1/pets after removing the server base path /v1.",
+            "source_url": "https://api.acme.com/openapi.yaml"
+          },
+          {
+            "criterion": "api_version",
+            "outcome": "not_requested",
+            "description": "No API version was requested.",
+            "source_url": "https://api.acme.com/openapi.yaml"
+          },
+          {
+            "criterion": "product",
+            "outcome": "not_requested",
+            "description": "No product was requested.",
+            "source_url": "https://api.acme.com/openapi.yaml"
+          },
+          {
+            "criterion": "provenance",
+            "outcome": "match",
+            "description": "The contract is served from api.acme.com, the same host as the target host api.acme.com.",
+            "source_url": "https://api.acme.com/openapi.yaml"
+          }
+        ],
+        "limitations": [
+          "OpenAPI validity and relevance have not been assessed."
+        ]
+      },
+      {
+        "source_url": "https://api.acme.com/swagger.json",
+        "discovery_method": "common_location",
+        "discovery_source": "https://api.acme.com/swagger.json",
+        "accepted": false,
+        "rejections": [
+          {
+            "stage": "validation",
+            "code": "unsupported_version",
+            "reason": "Swagger/OpenAPI 2.x is not supported; supported versions are 3.0.x and 3.1.x."
+          }
+        ],
+        "evidence": [],
+        "limitations": [
+          "OpenAPI validity and relevance have not been assessed."
+        ]
+      }
+    ],
+    "attempts": [
+      {
+        "url": "https://api.acme.com/openapi.json",
+        "stage": "common_location",
+        "outcome": "retrieved",
+        "reason": null
+      },
+      {
+        "url": "https://api.acme.com/openapi.yaml",
+        "stage": "common_location",
+        "outcome": "retrieved",
+        "reason": null
+      },
+      {
+        "url": "https://api.acme.com/swagger.json",
+        "stage": "common_location",
+        "outcome": "retrieved",
+        "reason": null
+      },
+      {
+        "url": "https://api.acme.com/docs",
+        "stage": "documentation_page",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/documentation",
+        "stage": "documentation_page",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      }
+    ],
+    "limitations": [
+      "Discovery is bounded: it tried provider mappings, common specification locations and links in documentation pages, within fixed request, time and size limits.",
+      "Documents were found but none passed validation, matching and reference capture; see each candidate's rejection reasons."
+    ]
+  }
+}

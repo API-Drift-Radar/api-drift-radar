@@ -1,0 +1,196 @@
+{
+  "description": "The same result after the user picks one alternative (select_candidate: no re-fetch).",
+  "request": {
+    "target": "api.acme.com"
+  },
+  "outcome": {
+    "status": "validated",
+    "package": {
+      "source_url": "https://api.acme.com/swagger.json",
+      "discovery_method": "common_location",
+      "discovery_source": "https://api.acme.com/swagger.json",
+      "content_fingerprint": "acc4762578cfec88fa6c9db7d46f82c96f98bfa19bcebd482652c4e04f543a78",
+      "openapi_version": "3.0.3",
+      "title": "Acme Admin API",
+      "info_version": "1.0.0",
+      "server_urls": [
+        "https://api.acme.com/v1"
+      ],
+      "path_count": 1,
+      "operation_count": 1,
+      "root_document": {
+        "url": "https://api.acme.com/swagger.json",
+        "media_type": "application/json",
+        "size_bytes": 222,
+        "sha256": "95d8220694ac81fca37858308f67655bf4f23caf5e6eb407dbbdb16fb02b7e31",
+        "retrieved_at": "2026-10-09T12:00:00Z"
+      },
+      "referenced_documents": [],
+      "evidence": [
+        {
+          "criterion": "server_host",
+          "outcome": "match",
+          "description": "Server 'https://api.acme.com/v1' declares api.acme.com, the same host as the target host api.acme.com.",
+          "source_url": "https://api.acme.com/swagger.json"
+        },
+        {
+          "criterion": "operation",
+          "outcome": "not_requested",
+          "description": "No endpoint path or method was given.",
+          "source_url": "https://api.acme.com/swagger.json"
+        },
+        {
+          "criterion": "api_version",
+          "outcome": "not_requested",
+          "description": "No API version was requested.",
+          "source_url": "https://api.acme.com/swagger.json"
+        },
+        {
+          "criterion": "product",
+          "outcome": "not_requested",
+          "description": "No product was requested.",
+          "source_url": "https://api.acme.com/swagger.json"
+        },
+        {
+          "criterion": "provenance",
+          "outcome": "match",
+          "description": "The contract is served from api.acme.com, the same host as the target host api.acme.com.",
+          "source_url": "https://api.acme.com/swagger.json"
+        }
+      ],
+      "limitations": [
+        "Structural validation only; the document was not checked against the official OpenAPI JSON Schema.",
+        "Matching applies explicit rules to the contract text and its origin; it does not prove identity.",
+        "Only $ref references are followed; operationRef, discriminator.mapping and externalValue targets are not captured."
+      ]
+    },
+    "alternatives": [],
+    "candidates": [
+      {
+        "source_url": "https://api.acme.com/openapi.json",
+        "discovery_method": "common_location",
+        "discovery_source": "https://api.acme.com/openapi.json",
+        "accepted": true,
+        "rejections": [],
+        "evidence": [
+          {
+            "criterion": "server_host",
+            "outcome": "match",
+            "description": "Server 'https://api.acme.com/v1' declares api.acme.com, the same host as the target host api.acme.com.",
+            "source_url": "https://api.acme.com/openapi.json"
+          },
+          {
+            "criterion": "operation",
+            "outcome": "not_requested",
+            "description": "No endpoint path or method was given.",
+            "source_url": "https://api.acme.com/openapi.json"
+          },
+          {
+            "criterion": "api_version",
+            "outcome": "not_requested",
+            "description": "No API version was requested.",
+            "source_url": "https://api.acme.com/openapi.json"
+          },
+          {
+            "criterion": "product",
+            "outcome": "not_requested",
+            "description": "No product was requested.",
+            "source_url": "https://api.acme.com/openapi.json"
+          },
+          {
+            "criterion": "provenance",
+            "outcome": "match",
+            "description": "The contract is served from api.acme.com, the same host as the target host api.acme.com.",
+            "source_url": "https://api.acme.com/openapi.json"
+          }
+        ],
+        "limitations": [
+          "Structural validation only; the document was not checked against the official OpenAPI JSON Schema.",
+          "Matching applies explicit rules to the contract text and its origin; it does not prove identity.",
+          "Only $ref references are followed; operationRef, discriminator.mapping and externalValue targets are not captured."
+        ]
+      },
+      {
+        "source_url": "https://api.acme.com/swagger.json",
+        "discovery_method": "common_location",
+        "discovery_source": "https://api.acme.com/swagger.json",
+        "accepted": true,
+        "rejections": [],
+        "evidence": [
+          {
+            "criterion": "server_host",
+            "outcome": "match",
+            "description": "Server 'https://api.acme.com/v1' declares api.acme.com, the same host as the target host api.acme.com.",
+            "source_url": "https://api.acme.com/swagger.json"
+          },
+          {
+            "criterion": "operation",
+            "outcome": "not_requested",
+            "description": "No endpoint path or method was given.",
+            "source_url": "https://api.acme.com/swagger.json"
+          },
+          {
+            "criterion": "api_version",
+            "outcome": "not_requested",
+            "description": "No API version was requested.",
+            "source_url": "https://api.acme.com/swagger.json"
+          },
+          {
+            "criterion": "product",
+            "outcome": "not_requested",
+            "description": "No product was requested.",
+            "source_url": "https://api.acme.com/swagger.json"
+          },
+          {
+            "criterion": "provenance",
+            "outcome": "match",
+            "description": "The contract is served from api.acme.com, the same host as the target host api.acme.com.",
+            "source_url": "https://api.acme.com/swagger.json"
+          }
+        ],
+        "limitations": [
+          "Structural validation only; the document was not checked against the official OpenAPI JSON Schema.",
+          "Matching applies explicit rules to the contract text and its origin; it does not prove identity.",
+          "Only $ref references are followed; operationRef, discriminator.mapping and externalValue targets are not captured."
+        ]
+      }
+    ],
+    "attempts": [
+      {
+        "url": "https://api.acme.com/openapi.json",
+        "stage": "common_location",
+        "outcome": "retrieved",
+        "reason": null
+      },
+      {
+        "url": "https://api.acme.com/openapi.yaml",
+        "stage": "common_location",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/swagger.json",
+        "stage": "common_location",
+        "outcome": "retrieved",
+        "reason": null
+      },
+      {
+        "url": "https://api.acme.com/docs",
+        "stage": "documentation_page",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/documentation",
+        "stage": "documentation_page",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      }
+    ],
+    "limitations": [
+      "Discovery is bounded: it tried provider mappings, common specification locations and links in documentation pages, within fixed request, time and size limits.",
+      "2 distinct contracts fit the request; none was chosen. Supply more context (an operation, API version or product) or select one explicitly.",
+      "Selected explicitly from 2 alternatives: https://api.acme.com/swagger.json."
+    ]
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "description": "Nothing qualified and a source answered with an error, so a contract may exist behind it.",
+  "request": {
+    "target": "api.acme.com"
+  },
+  "outcome": {
+    "status": "inaccessible",
+    "package": null,
+    "alternatives": [],
+    "candidates": [],
+    "attempts": [
+      {
+        "url": "https://api.acme.com/openapi.json",
+        "stage": "common_location",
+        "outcome": "inaccessible",
+        "reason": "http_error: HTTP status 503."
+      },
+      {
+        "url": "https://api.acme.com/openapi.yaml",
+        "stage": "common_location",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/swagger.json",
+        "stage": "common_location",
+        "outcome": "inaccessible",
+        "reason": "http_error: HTTP status 403."
+      },
+      {
+        "url": "https://api.acme.com/docs",
+        "stage": "documentation_page",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/documentation",
+        "stage": "documentation_page",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      }
+    ],
+    "limitations": [
+      "Discovery is bounded: it tried provider mappings, common specification locations and links in documentation pages, within fixed request, time and size limits.",
+      "Some sources could not be reached, so a contract may exist behind them. Failing to find a contract is not proof that none is published."
+    ]
+  }
+}

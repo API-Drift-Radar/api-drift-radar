@@ -1,0 +1,292 @@
+{
+  "description": "No version requested, so each dated provider version is an alternative.",
+  "request": {
+    "target": "api.acme.com"
+  },
+  "outcome": {
+    "status": "ambiguous",
+    "package": null,
+    "alternatives": [
+      {
+        "source_url": "https://specs.acme.com/2022-11-28.json",
+        "discovery_method": "provider_mapping",
+        "discovery_source": "https://github.com/acme/openapi",
+        "content_fingerprint": "9630265182fe73a77886245b2835ebc542bb655c3a97de29a9ab26253b7730d2",
+        "openapi_version": "3.0.3",
+        "title": "Acme Pets API",
+        "info_version": "1.0.0",
+        "server_urls": [
+          "https://api.acme.com/v1"
+        ],
+        "path_count": 2,
+        "operation_count": 4,
+        "root_document": {
+          "url": "https://specs.acme.com/2022-11-28.json",
+          "media_type": "application/json",
+          "size_bytes": 301,
+          "sha256": "9a1779068d473c91eb667bbc68a34f031ee172351f95aa4e408c83648a9d16b5",
+          "retrieved_at": "2026-10-09T12:00:00Z"
+        },
+        "referenced_documents": [],
+        "evidence": [
+          {
+            "criterion": "provider_mapping",
+            "outcome": null,
+            "description": "Registry entry acme-2022-11-28 explicitly lists host api.acme.com. Product hint: None; API version hint: '2022-11-28'. These hints have not been verified against the document.",
+            "source_url": "https://github.com/acme/openapi"
+          },
+          {
+            "criterion": "server_host",
+            "outcome": "match",
+            "description": "Server 'https://api.acme.com/v1' declares api.acme.com, the same host as the target host api.acme.com.",
+            "source_url": "https://specs.acme.com/2022-11-28.json"
+          },
+          {
+            "criterion": "operation",
+            "outcome": "not_requested",
+            "description": "No endpoint path or method was given.",
+            "source_url": "https://specs.acme.com/2022-11-28.json"
+          },
+          {
+            "criterion": "api_version",
+            "outcome": "not_requested",
+            "description": "No API version was requested.",
+            "source_url": "https://specs.acme.com/2022-11-28.json"
+          },
+          {
+            "criterion": "product",
+            "outcome": "not_requested",
+            "description": "No product was requested.",
+            "source_url": "https://specs.acme.com/2022-11-28.json"
+          },
+          {
+            "criterion": "provenance",
+            "outcome": "match",
+            "description": "A provider mapping explicitly lists host api.acme.com (source: https://github.com/acme/openapi).",
+            "source_url": "https://specs.acme.com/2022-11-28.json"
+          }
+        ],
+        "limitations": [
+          "Structural validation only; the document was not checked against the official OpenAPI JSON Schema.",
+          "Matching applies explicit rules to the contract text and its origin; it does not prove identity.",
+          "Only $ref references are followed; operationRef, discriminator.mapping and externalValue targets are not captured."
+        ]
+      },
+      {
+        "source_url": "https://specs.acme.com/2026-03-10.json",
+        "discovery_method": "provider_mapping",
+        "discovery_source": "https://github.com/acme/openapi",
+        "content_fingerprint": "d6f5ecaf98ad05f3b09a388b1f1e43ce73919db70bb8111a43b08ff52507e595",
+        "openapi_version": "3.0.3",
+        "title": "Acme Pets API",
+        "info_version": "1.0.0",
+        "server_urls": [
+          "https://api.acme.com/v1"
+        ],
+        "path_count": 2,
+        "operation_count": 2,
+        "root_document": {
+          "url": "https://specs.acme.com/2026-03-10.json",
+          "media_type": "application/json",
+          "size_bytes": 260,
+          "sha256": "559c3c18c6796ccc546431d5290edac938c49e6cbf3c3595f9faedf8d84d2105",
+          "retrieved_at": "2026-10-09T12:00:00Z"
+        },
+        "referenced_documents": [],
+        "evidence": [
+          {
+            "criterion": "provider_mapping",
+            "outcome": null,
+            "description": "Registry entry acme-2026-03-10 explicitly lists host api.acme.com. Product hint: None; API version hint: '2026-03-10'. These hints have not been verified against the document.",
+            "source_url": "https://github.com/acme/openapi"
+          },
+          {
+            "criterion": "server_host",
+            "outcome": "match",
+            "description": "Server 'https://api.acme.com/v1' declares api.acme.com, the same host as the target host api.acme.com.",
+            "source_url": "https://specs.acme.com/2026-03-10.json"
+          },
+          {
+            "criterion": "operation",
+            "outcome": "not_requested",
+            "description": "No endpoint path or method was given.",
+            "source_url": "https://specs.acme.com/2026-03-10.json"
+          },
+          {
+            "criterion": "api_version",
+            "outcome": "not_requested",
+            "description": "No API version was requested.",
+            "source_url": "https://specs.acme.com/2026-03-10.json"
+          },
+          {
+            "criterion": "product",
+            "outcome": "not_requested",
+            "description": "No product was requested.",
+            "source_url": "https://specs.acme.com/2026-03-10.json"
+          },
+          {
+            "criterion": "provenance",
+            "outcome": "match",
+            "description": "A provider mapping explicitly lists host api.acme.com (source: https://github.com/acme/openapi).",
+            "source_url": "https://specs.acme.com/2026-03-10.json"
+          }
+        ],
+        "limitations": [
+          "Structural validation only; the document was not checked against the official OpenAPI JSON Schema.",
+          "Matching applies explicit rules to the contract text and its origin; it does not prove identity.",
+          "Only $ref references are followed; operationRef, discriminator.mapping and externalValue targets are not captured."
+        ]
+      }
+    ],
+    "candidates": [
+      {
+        "source_url": "https://specs.acme.com/2022-11-28.json",
+        "discovery_method": "provider_mapping",
+        "discovery_source": "https://github.com/acme/openapi",
+        "accepted": true,
+        "rejections": [],
+        "evidence": [
+          {
+            "criterion": "provider_mapping",
+            "outcome": null,
+            "description": "Registry entry acme-2022-11-28 explicitly lists host api.acme.com. Product hint: None; API version hint: '2022-11-28'. These hints have not been verified against the document.",
+            "source_url": "https://github.com/acme/openapi"
+          },
+          {
+            "criterion": "server_host",
+            "outcome": "match",
+            "description": "Server 'https://api.acme.com/v1' declares api.acme.com, the same host as the target host api.acme.com.",
+            "source_url": "https://specs.acme.com/2022-11-28.json"
+          },
+          {
+            "criterion": "operation",
+            "outcome": "not_requested",
+            "description": "No endpoint path or method was given.",
+            "source_url": "https://specs.acme.com/2022-11-28.json"
+          },
+          {
+            "criterion": "api_version",
+            "outcome": "not_requested",
+            "description": "No API version was requested.",
+            "source_url": "https://specs.acme.com/2022-11-28.json"
+          },
+          {
+            "criterion": "product",
+            "outcome": "not_requested",
+            "description": "No product was requested.",
+            "source_url": "https://specs.acme.com/2022-11-28.json"
+          },
+          {
+            "criterion": "provenance",
+            "outcome": "match",
+            "description": "A provider mapping explicitly lists host api.acme.com (source: https://github.com/acme/openapi).",
+            "source_url": "https://specs.acme.com/2022-11-28.json"
+          }
+        ],
+        "limitations": [
+          "Structural validation only; the document was not checked against the official OpenAPI JSON Schema.",
+          "Matching applies explicit rules to the contract text and its origin; it does not prove identity.",
+          "Only $ref references are followed; operationRef, discriminator.mapping and externalValue targets are not captured."
+        ]
+      },
+      {
+        "source_url": "https://specs.acme.com/2026-03-10.json",
+        "discovery_method": "provider_mapping",
+        "discovery_source": "https://github.com/acme/openapi",
+        "accepted": true,
+        "rejections": [],
+        "evidence": [
+          {
+            "criterion": "provider_mapping",
+            "outcome": null,
+            "description": "Registry entry acme-2026-03-10 explicitly lists host api.acme.com. Product hint: None; API version hint: '2026-03-10'. These hints have not been verified against the document.",
+            "source_url": "https://github.com/acme/openapi"
+          },
+          {
+            "criterion": "server_host",
+            "outcome": "match",
+            "description": "Server 'https://api.acme.com/v1' declares api.acme.com, the same host as the target host api.acme.com.",
+            "source_url": "https://specs.acme.com/2026-03-10.json"
+          },
+          {
+            "criterion": "operation",
+            "outcome": "not_requested",
+            "description": "No endpoint path or method was given.",
+            "source_url": "https://specs.acme.com/2026-03-10.json"
+          },
+          {
+            "criterion": "api_version",
+            "outcome": "not_requested",
+            "description": "No API version was requested.",
+            "source_url": "https://specs.acme.com/2026-03-10.json"
+          },
+          {
+            "criterion": "product",
+            "outcome": "not_requested",
+            "description": "No product was requested.",
+            "source_url": "https://specs.acme.com/2026-03-10.json"
+          },
+          {
+            "criterion": "provenance",
+            "outcome": "match",
+            "description": "A provider mapping explicitly lists host api.acme.com (source: https://github.com/acme/openapi).",
+            "source_url": "https://specs.acme.com/2026-03-10.json"
+          }
+        ],
+        "limitations": [
+          "Structural validation only; the document was not checked against the official OpenAPI JSON Schema.",
+          "Matching applies explicit rules to the contract text and its origin; it does not prove identity.",
+          "Only $ref references are followed; operationRef, discriminator.mapping and externalValue targets are not captured."
+        ]
+      }
+    ],
+    "attempts": [
+      {
+        "url": "https://specs.acme.com/2022-11-28.json",
+        "stage": "provider_mapping",
+        "outcome": "retrieved",
+        "reason": null
+      },
+      {
+        "url": "https://specs.acme.com/2026-03-10.json",
+        "stage": "provider_mapping",
+        "outcome": "retrieved",
+        "reason": null
+      },
+      {
+        "url": "https://api.acme.com/openapi.json",
+        "stage": "common_location",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/openapi.yaml",
+        "stage": "common_location",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/swagger.json",
+        "stage": "common_location",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/docs",
+        "stage": "documentation_page",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/documentation",
+        "stage": "documentation_page",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      }
+    ],
+    "limitations": [
+      "Discovery is bounded: it tried provider mappings, common specification locations and links in documentation pages, within fixed request, time and size limits.",
+      "2 distinct contracts fit the request; none was chosen. Supply more context (an operation, API version or product) or select one explicitly."
+    ]
+  }
+}
