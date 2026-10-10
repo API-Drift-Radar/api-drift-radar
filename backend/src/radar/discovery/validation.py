@@ -60,6 +60,7 @@ class ContractSummary:
     webhook_operation_count: int
     path_count: int
     node_count: int
+    unexpanded_path_items: int = 0  # path items that are only a $ref; their operations are not listed
 
 
 @dataclass(frozen=True)
@@ -266,6 +267,34 @@ def _operations(path_items, base, *, paths):
     return operations, unexpanded
 
 
+@dataclass(frozen=True)
+class ParseResult:
+    value: Any = None
+    node_count: int = 0
+    rejection: ValidationRejection | None = None
+
+    @property
+    def ok(self):
+        return self.rejection is None
+
+
+def parse_document(content: bytes, limits: ValidationLimits | None = None) -> ParseResult:
+    """Parse any JSON/YAML document with the same bounds and strictness as validation.
+
+    For documents that are not OpenAPI roots (for example referenced schema files).
+    Never raises for document content; the value may be any JSON-like value.
+    """
+    limits = limits or ValidationLimits()
+    if not isinstance(content, (bytes, bytearray)):
+        raise TypeError('content must be bytes.')
+    try:
+        value = _parse(bytes(content), limits)
+        nodes = _inspect(value, limits) if isinstance(value, (dict, list)) else 1
+    except _Rejected as rejected:
+        return ParseResult(rejection=rejected.rejection)
+    return ParseResult(value, nodes)
+
+
 def validate_document(content: bytes, limits: ValidationLimits | None = None) -> ValidationResult:
     """Return an accepted summary plus parsed document, or one rejection.
 
@@ -334,5 +363,6 @@ def _check_openapi(document, nodes):
     summary = ContractSummary(
         openapi_version=version, title=title, info_version=info_version, server_urls=tuple(server_urls),
         operations=tuple(operations), webhook_operation_count=len(webhook_operations),
-        path_count=sum(1 for path in paths if not path.startswith('x-')), node_count=nodes)
+        path_count=sum(1 for path in paths if not path.startswith('x-')), node_count=nodes,
+        unexpanded_path_items=unexpanded)
     return summary, tuple(limitations)

@@ -41,6 +41,7 @@ class MatchingEvidence:
     criterion: str
     description: str
     source_url: str
+    outcome: str | None = None  # match, mismatch, indeterminate or not_requested; None for discovery hints
 
 
 @dataclass(frozen=True)
@@ -88,9 +89,12 @@ class DiscoveryOutcome:
     attempts: tuple[DiscoveryAttempt, ...] = ()
     limitations: tuple[str, ...] = ()
     package: ValidatedContractPackage | None = None
+    packages: tuple[ValidatedContractPackage, ...] = ()  # the accepted alternatives of an ambiguous outcome
 
     def __post_init__(self):
         if not isinstance(self.status, DiscoveryStatus):
             raise ValueError("status must be a DiscoveryStatus.")
         if (self.status is DiscoveryStatus.VALIDATED) != (self.package is not None):
             raise ValueError("Only a validated outcome must contain a contract package.")
+        if self.packages and self.status is not DiscoveryStatus.AMBIGUOUS:
+            raise ValueError("Only an ambiguous outcome carries alternative packages.")

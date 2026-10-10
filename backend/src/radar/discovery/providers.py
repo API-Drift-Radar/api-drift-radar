@@ -106,6 +106,7 @@ def search_provider_mappings(
     *,
     registry_path=None,
     allow_loopback=False,
+    cache=None,
 ) -> ProviderSearchResult:
     """Keep all exact-host matches, without choosing products or latest versions.
 
@@ -136,5 +137,5 @@ def search_provider_mappings(
         if mapping.max_document_bytes:
             allowances[mapping.spec_url] = max(allowances.get(mapping.spec_url, 0), mapping.max_document_bytes)
     search = fetch_candidates(target, locations, budget, allow_loopback=allow_loopback,
-                              limitations=PROVIDER_LIMITATIONS, document_limits=allowances)
+                              limitations=PROVIDER_LIMITATIONS, document_limits=allowances, cache=cache)
     return ProviderSearchResult(mappings, search)

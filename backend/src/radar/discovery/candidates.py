@@ -51,6 +51,7 @@ def search_common_locations(
     budget: DiscoveryBudget,
     *,
     allow_loopback: bool = False,
+    cache: dict | None = None,
 ) -> CandidateSearchResult:
     """Fetch all supported locations without selecting the first successful one.
 
@@ -66,17 +67,21 @@ def search_common_locations(
         limitations=("OpenAPI validity and relevance have not been assessed.",),
     ) for url in common_candidate_urls(target))
     return fetch_candidates(target, candidates, budget, allow_loopback=allow_loopback,
-                            limitations=SEARCH_LIMITATIONS)
+                            limitations=SEARCH_LIMITATIONS, cache=cache)
 
 
 def fetch_candidates(target, locations, budget, *, allow_loopback=False, limitations=(),
-                     document_limits=None):
+                     document_limits=None, cache=None):
     """Fetch each distinct source URL once, retaining every provenance record.
 
     `document_limits` optionally maps a source URL to a larger per-document size
-    cap for that URL only; other URLs keep the budget's cap.
+    cap for that URL only; other URLs keep the budget's cap. `cache`, shared across
+    strategies of one run, maps (url, size cap) to a finished fetch so the same URL is
+    never requested twice; a cached result costs no budget. Results that only reflect an
+    exhausted budget are not cached.
     """
     document_limits = document_limits or {}
+    cache = {} if cache is None else cache
     grouped = {}
     for candidate in locations:
         grouped.setdefault(candidate.source_url, []).append(candidate)
@@ -86,20 +91,25 @@ def fetch_candidates(target, locations, budget, *, allow_loopback=False, limitat
     skipped = ()
     stop_reason = None
     for index, url in enumerate(urls):
-        try:
-            budget.remaining()
-        except BudgetExceeded as error:
-            stop_reason = error.code
-        if stop_reason is None and budget.requests_used >= budget.limits.max_requests:
-            stop_reason = "request_limit"
-        if stop_reason is None and budget.bytes_used >= budget.limits.max_total_bytes:
-            stop_reason = "total_size_limit"
-        if stop_reason is not None:
-            skipped = urls[index:]
-            break
+        cache_key = (url, document_limits.get(url))
+        result = cache.get(cache_key)
+        if result is None:
+            try:
+                budget.remaining()
+            except BudgetExceeded as error:
+                stop_reason = error.code
+            if stop_reason is None and budget.requests_used >= budget.limits.max_requests:
+                stop_reason = "request_limit"
+            if stop_reason is None and budget.bytes_used >= budget.limits.max_total_bytes:
+                stop_reason = "total_size_limit"
+            if stop_reason is not None:
+                skipped = urls[index:]
+                break
 
-        extra = {'document_byte_limit': document_limits[url]} if url in document_limits else {}
-        result = fetch_document(url, budget, allow_loopback=allow_loopback, **extra)
+            extra = {'document_byte_limit': document_limits[url]} if url in document_limits else {}
+            result = fetch_document(url, budget, allow_loopback=allow_loopback, **extra)
+            if result.ok or result.failure.code not in {"request_limit", "deadline_exceeded", "total_size_limit"}:
+                cache[cache_key] = result
         fetches.append(result)
         if result.ok:
             for candidate in grouped[url]:

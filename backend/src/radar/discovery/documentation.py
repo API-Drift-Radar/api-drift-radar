@@ -364,6 +364,7 @@ def search_documentation(
     documentation_urls=None,
     limits=None,
     allow_loopback=False,
+    cache=None,
 ) -> DocumentationSearchResult:
     """Default to origin /docs and /documentation; accept explicit trusted seeds.
 
@@ -384,7 +385,7 @@ def search_documentation(
     chosen = seeds[:limits.max_pages]
     trusted_origins = {_origin(url) for url in chosen}
     docs = fetch_candidates(target, tuple(ContractCandidate(url, 'documentation_seed', url) for url in chosen),
-                            budget, allow_loopback=allow_loopback, limitations=LIMITATIONS)
+                            budget, allow_loopback=allow_loopback, limitations=LIMITATIONS, cache=cache)
     notes = []
     locations = []
     unique_urls = set()
@@ -412,7 +413,8 @@ def search_documentation(
                 continue
             unique_urls.add(candidate.source_url)
             locations.append(candidate)
-    search = fetch_candidates(target, locations, budget, allow_loopback=allow_loopback, limitations=LIMITATIONS)
+    search = fetch_candidates(target, locations, budget, allow_loopback=allow_loopback, limitations=LIMITATIONS,
+                              cache=cache)
     if docs.stop_reason and search.stop_reason is None:
         search = replace(search, stop_reason=docs.stop_reason)
     return DocumentationSearchResult(docs.fetches, search,

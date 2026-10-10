@@ -306,6 +306,160 @@ bound on parse time; with libyaml a 10 MB YAML file takes about 1 s, without it
 the real Stripe and GitHub specs (JSON and YAML forms give identical summaries); those
 live checks are manual and not part of the test suite.
 
+## Reference scanning (issue #9, reference capture step 1)
+
+`radar.discovery.references.scan_references(document, base_url, start=(), limits=None)`
+finds every `$ref` in a parsed document, classifies it, and verifies the internal ones.
+Pure: no network. `base_url` is the document's final retrieval URL, against which
+relative references resolve. It returns a `ReferenceScan` with `external` (distinct
+targets still to fetch, with occurrence counts and first location), `failures`
+(`reference_unsupported` or `unresolvable_reference`, each with a JSON-pointer
+`location`), `rejection` (the first failure, noting how many more), plus counts and
+limitations. `classify_reference` and `resolve_pointer` are public building blocks.
+
+Classification: `#/a/b` is internal and must resolve (percent-decoding and RFC 6901
+escapes `~0`/`~1` are applied; list indexes must be canonical). A reference to the
+containing document's own URL is internal. Other HTTP(S) targets are external, with the
+fragment kept as a pointer into the target file. `#name` anchors are counted as
+limitations, not verified. Non-HTTP(S) schemes, credentials, bad ports, absolute URLs
+without a host, malformed pointers and control characters are unsupported.
+
+What counts as a reference: any object with a string `$ref`, including siblings and
+vendor extensions. Only unambiguous data keywords (`example`, `default`, `const`, `enum`)
+are skipped, and not when they are property or component names (`properties`,
+`schemas`, `responses`, `parameters`, ...). When unsure it follows, because a spurious
+reference fails visibly while a missed one would make a contract look complete.
+
+`start` scans one subtree while internal pointers still resolve against the whole
+document; step 2 uses it to follow only the reachable parts of fetched files. Bounds:
+5,000,000 visited values and 2,000 distinct external references by default; the walk
+is iterative, so deep documents and shared-subtree expansion cannot overflow the stack
+or run unbounded. Limitations: only `$ref` is followed (not `operationRef`,
+`discriminator.mapping` or `externalValue`); `$id` base-URI changes are not applied.
+Checked on the real Stripe and GitHub specs: all 4,505 and ~10,600 internal references
+resolve, in under 0.1 s.
+
+## External reference capture (issue #9, reference capture step 2)
+
+```python
+from radar.discovery.capture import capture_references, CaptureLimits
+
+result = capture_references(root_final_url, validation.document, budget, allow_loopback=False)
+if result.ok:
+    result.documents    # CapturedDocument per referenced file: final URL, ORIGINAL bytes, time, media type
+    result.references   # ResolvedReference edges: referrer, location, ref, requested/final URL, pointer
+    result.limitations
+else:
+    result.rejection    # stage 'reference_capture', code, reason, location
+    result.failure      # CaptureFailure: ref, target URL, underlying fetch code and HTTP status
+    result.unprocessed  # references left unprocessed when it stopped
+```
+
+A contract is only complete when every document it depends on is captured. Capture
+follows every external `$ref` from the validated root, fetching each file once through
+the shared `DiscoveryBudget` (so request, time, size and redirect caps and private-address
+blocking all apply), parsing it with the same bounded parser as validation, and checking
+that each pointer exists. It follows only what is reachable: the subtree a pointer lands
+on, plus any internal `#/...` targets and external references reachable from there. An
+unused broken definition elsewhere in a shared file does not block a contract that never
+uses it. The stored copy is still the whole file. It stops at the first failure and
+returns **no** documents, so an incomplete capture can never be mistaken for a success.
+
+Policy: cross-origin references are rejected unless `allow_cross_origin=True`; the origin
+is always the root document's and is also checked after redirects, so a chain cannot walk
+to another host. A referenced file must parse to an object or list, so a catch-all
+"Not Found" page or bare text is never accepted as a definition. Relative references
+resolve against each file's final URL.
+
+| Rejection code | Meaning |
+|---|---|
+| `reference_unavailable` | fetch failed; `failure.fetch_code`/`http_status` carry the cause (404, timeout, blocked address, size limit, ...) |
+| `capture_budget_exhausted` | the shared request, time or byte budget ran out; the contract is not known to be broken |
+| `reference_cross_origin` | target (or its redirect) is outside the root's origin |
+| `reference_invalid_document` | unparseable, HTML, duplicate keys, alias bomb, or not an object/list |
+| `unresolvable_reference` | a pointer, internal or into another file, does not exist (reachable only) |
+| `reference_unsupported` | non-HTTP(S) scheme, credentials, malformed URL or pointer |
+| `reference_limit_exceeded` | file count, hop depth, total values or processed references over the limit |
+
+`CaptureLimits` defaults: 50 files, depth 10, 10M values, 5,000 processed references,
+cross-origin off. Locations in referenced files read `<file URL>#<pointer>`.
+
+Verified with a fake network (55 unit tests) and real local HTTP servers (9 scenarios:
+multi-file capture, missing file, redirect, cross-origin, blocked address, slow file,
+oversized file, request budget, catch-all page). Deleting a guard makes tests fail for
+each of origin, redirect, scalar, pointer, subtree, depth and cycle rules. The real
+Stripe and GitHub specs are fully bundled, so they exercise only the internal path (all
+4,505 and ~10,600 internal references resolve); external capture is covered by fixtures,
+not live providers.
+
+Bug found by the integration tests and fixed: an internal reference inside a fetched file
+(`#/Error`) leads to another part of the same file that may hold more external references;
+checking only that the pointer exists would have skipped them and returned an incomplete
+capture as a success. Internal targets are now followed transitively.
+
+Limitations: only `$ref` is followed (not `operationRef`, `discriminator.mapping`,
+`externalValue`); `$id` base-URI changes are not applied; `#anchor` references are not
+verified; fetching is sequential. Whole-file scope applies when a reference has no pointer.
+
+## Candidate evaluation and discovery orchestration (issue #9, final assembly)
+
+```python
+from radar.discovery.orchestrator import discover, select_candidate
+from radar.domain.discovery import DiscoveryRequest
+
+outcome = discover(DiscoveryRequest("api.github.com", method="GET", api_version="2022-11-28"))
+outcome.status       # validated | ambiguous | rejected | inaccessible | not_found
+outcome.package      # ValidatedContractPackage (validated only)
+outcome.packages     # the accepted alternatives (ambiguous only)
+outcome.candidates   # every evaluated candidate, with evidence and rejection reasons
+outcome.attempts     # every fetch: retrieved, not_found, inaccessible, blocked, budget_exhausted, not_a_contract
+outcome.limitations  # bounds, cut-short notes, and the package's limitations
+resolved = select_candidate(outcome, chosen_url)   # ambiguous -> validated, no network
+```
+
+`evaluate_candidate` (evaluation.py) runs one retrieved candidate through validation, then
+matching, then reference capture (cheapest first, so a contract that does not fit never spends
+request budget on its references). It returns a `ValidatedContractPackage` or exactly one
+rejection tagged with its stage. `package_fingerprint` identifies a contract by its parsed content in a
+canonical form (sorted object keys, list order kept, `true` kept apart from `1`), so the same contract
+served as JSON and as YAML, or reformatted, is one contract; the original bytes are still what is stored.
+Found on a live check: `api.weather.gov` serves identical contracts at `/openapi.json` and
+`/openapi.yaml` (different bytes), which a raw-byte fingerprint wrongly reported as ambiguous.
+
+`discover` (orchestrator.py) runs provider mappings, common locations and documentation links
+in that order under ONE shared budget and one fetch cache (a URL is never fetched twice), judges
+every retrieved document independently, merges identical contracts found more than once
+(an `also_found` evidence record keeps the other location), and decides:
+
+| Status | When |
+|---|---|
+| `validated` | exactly one distinct complete, matching contract |
+| `ambiguous` | two or more distinct ones; none chosen, all in `packages` |
+| `rejected` | documents were found but none passed, even if some other source was unreachable |
+| `inaccessible` | nothing passed and a source failed (403, 5xx, timeout, TLS, private address) |
+| `not_found` | nothing passed and every source was a clean miss (404/410, or a catch-all page or JSON error at a guessed location) |
+
+A catch-all HTML page or unrelated JSON at a guessed location is a miss, recorded in `attempts`
+as `not_a_contract` with its reason; the same response at a location a provider mapping or a
+documentation page named is a real rejection. A link on an untrusted page that points at a
+private address is recorded as `blocked` and does not make the result inaccessible. If the
+search is cut short by its limits, the outcome says so and that other contracts may exist; there
+is no separate status for that.
+
+Shared-model changes (agree with the storage owner): `MatchingEvidence.outcome` (optional),
+`DiscoveryOutcome.packages` (ambiguous only). The ambiguity of a GitHub request without a version
+hint is intended: one mapping per dated API version, and a version hint selects one.
+
+Checked live on 2026-10-09 (manual, not in the test suite): `api.stripe.com` validated from the
+provider mapping in ~1 s; `POST https://api.stripe.com/v1/customers` validated with operation
+evidence; `api.github.com` returned two alternatives (~3 s), `select_candidate` resolved it, and
+`api_version="2026-03-10"` validated that version and rejected the other with `version_mismatch`.
+A sub-product hint such as `product="billing"` was rejected for Stripe because the contract's own
+text never says it (see the matching limits).
+
+Not done: a direct-URL strategy (a target that is itself a spec URL), the optional LLM fallback,
+and no separate status for "search cut short".
+
 ## Issue #9 status and resume plan
 
 Done and tested (fixtures only; live provider checks were manual): input normalization,
@@ -337,9 +491,10 @@ suggest URLs and can never certify a contract):
 - F. `search_llm_fallback(request, budget, suggester, pages)`: reuse already-fetched
   documentation pages, fetch verified suggestions through the shared `DiscoveryBudget`.
 
-Remaining after the fallback: required `$ref`
-capture, relevance matching, orchestration with status precedence, end-to-end
-acceptance tests, and official-source verification of any real provider mapping.
+Reference capture is done (offline scan, internal verification, bounded external capture with
+origin policy, integration tests). Relevance matching, candidate evaluation and orchestration are done. Remaining: end-to-end acceptance
+tests over real HTTP, a labeled corpus for false-accept measurement, sample outcomes for the API and
+frontend owners, and official-source verification of any further provider mapping.
 Open decisions: cross-origin spec links from documentation, default documentation
 seeds, whether to run every strategy or stop at the first valid candidate, and
 which provider backs the live fallback (Merge Gateway API format not yet known).
