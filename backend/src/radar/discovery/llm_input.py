@@ -15,6 +15,12 @@ from radar.discovery.fetch import FetchResult
 
 KEYWORDS = re.compile(
     r'openapi|swagger|redoc|rapidoc|api[-_ ]?docs?\b|\bspec(?:s|ification)?\b|spec-?url', re.I)
+# Inline scripts are searched with a stricter pattern than links: words like "spec" appear in any page-state blob.
+SCRIPT_KEYWORDS = re.compile(r'openapi|swagger|redoc|rapidoc|spec-?url|api-?description', re.I)
+MAX_SCRIPT_SNIPPETS = 4
+# <link> relations that point at assets, never at a contract.
+ASSET_RELATIONS = frozenset({'stylesheet', 'icon', 'shortcut', 'apple-touch-icon', 'mask-icon', 'preload', 'prefetch',
+                             'preconnect', 'dns-prefetch', 'manifest', 'modulepreload'})
 SPEC_EXTENSION = re.compile(r'\.(?:json|ya?ml)$', re.I)
 SPEC_ATTRIBUTES = ('spec-url', 'data-url', 'api-description-url', 'apidescriptionurl')
 SPEC_RELATIONS = {'service-desc', 'describedby'}
@@ -39,7 +45,7 @@ class ReductionLimits:
 
 @dataclass(frozen=True)
 class ReducedItem:
-    kind: str  # 'link', 'script', 'script_src', 'tag' or 'attribute'
+    kind: str  # 'link', 'script', 'tag' or 'attribute'
     text: str  # the exact line shown to a model
     url: str | None = None
     label: str | None = None
@@ -130,7 +136,7 @@ def _clean(text, limit):
 def _snippets(script, limit):
     """Windows around keyword matches, merged when they overlap, in order."""
     windows = []
-    for match in KEYWORDS.finditer(script):
+    for match in SCRIPT_KEYWORDS.finditer(script):
         start, end = max(0, match.start() - SNIPPET_WINDOW), min(len(script), match.end() + SNIPPET_WINDOW)
         if windows and start <= windows[-1][1]:
             windows[-1][1] = end
@@ -190,18 +196,18 @@ def reduce_page(document: FetchResult, limits: ReductionLimits | None = None) ->
             if url and _relevant(url, label):
                 candidates.append(ReducedItem('link', f'LINK {url} "{label}"', url, label))
         elif kind == 'script_src':
-            url = _resolve(base, payload)
-            if url and KEYWORDS.search(url):
-                candidates.append(ReducedItem('script_src', f'SCRIPT_SRC {url}', url))
+            continue  # external scripts are never fetched or run, so a model cannot use them; explain_page lists them
         elif kind == 'script':
             for snippet in _snippets(payload, limits.max_snippet_chars):
-                candidates.append(ReducedItem('script', f'SCRIPT {snippet}'))
+                if sum(1 for c in candidates if c.kind == 'script') < MAX_SCRIPT_SNIPPETS:
+                    candidates.append(ReducedItem('script', f'SCRIPT {snippet}'))
         elif kind == 'tag_link':
             url = _resolve(base, payload['href'])
             relations = set(payload.get('rel', '').lower().split())
             declared = (payload.get('type') or '').lower()
-            if url and (relations & SPEC_RELATIONS or KEYWORDS.search(url)
-                        or ('alternate' in relations and ('json' in declared or 'yaml' in declared))):
+            asset = bool(relations & ASSET_RELATIONS) and not relations & SPEC_RELATIONS
+            if url and not asset and (relations & SPEC_RELATIONS or KEYWORDS.search(url)
+                                      or ('alternate' in relations and ('json' in declared or 'yaml' in declared))):
                 rel = _clean(payload.get('rel', ''), limits.max_label_chars)
                 candidates.append(ReducedItem('tag', f'TAG link rel="{rel}" {url}', url))
         elif kind == 'tag_meta':
@@ -231,3 +237,106 @@ def reduce_page(document: FetchResult, limits: ReductionLimits | None = None) ->
     if truncated:
         notes.append(ReductionNote('truncated', 'Additional relevant items were omitted by the reduction limits.'))
     return ReducedPage(page_url, tuple(items), '\n'.join(lines), truncated, tuple(notes))
+
+
+# --- diagnosis: why did the reducer keep or drop things? ------------------------------------------------
+
+@dataclass(frozen=True)
+class PageReport:
+    page_url: str
+    reduced: ReducedPage
+    anchors_total: int = 0
+    anchors_kept: int = 0
+    dropped_links: tuple[tuple[str, str], ...] = ()  # (url, label), the first few the reducer discarded
+    inline_scripts: int = 0
+    inline_script_chars: int = 0
+    script_srcs: tuple[str, ...] = ()  # external scripts: they are never fetched or run
+    script_srcs_total: int = 0
+    link_tags: int = 0
+    app_shell: bool = False
+    diagnosis: str = ''
+
+
+def explain_page(document: FetchResult, limits: ReductionLimits | None = None, *, examples: int = 12) -> PageReport:
+    """Say what the reducer did with a page and why. Pure; calls no model and spends nothing."""
+    limits = limits or ReductionLimits()
+    reduced = reduce_page(document, limits)
+    if reduced.notes and not reduced.items and (not document.ok or document.content is None
+                                                or reduced.notes[0].code != 'truncated'):
+        return PageReport(document.final_url, reduced, diagnosis=f'The page was not reduced: {reduced.notes[0].reason}')
+    collector = _Collector()
+    try:
+        collector.feed(document.content.decode('utf-8-sig'))
+        collector.close()
+    except (ValueError, AssertionError, RecursionError, UnicodeError):
+        return PageReport(document.final_url, reduced, diagnosis='The page could not be parsed.')
+    base = urljoin(document.final_url, collector.base) if collector.base else document.final_url
+    anchors = [e for e in collector.entries if e[0] == 'link']
+    kept_urls = {item.url for item in reduced.items if item.kind == 'link'}
+    dropped = []
+    for _, (href, text) in anchors:
+        url = _resolve(base, href)
+        if url and url not in kept_urls and (url, _clean(text, limits.max_label_chars)) not in dropped:
+            dropped.append((url, _clean(text, limits.max_label_chars)))
+    scripts = [e[1] for e in collector.entries if e[0] == 'script']
+    srcs = []
+    for _, payload in (e for e in collector.entries if e[0] == 'script_src'):
+        url = _resolve(base, payload)
+        if url and url not in srcs:
+            srcs.append(url)
+    report = dict(anchors_total=len(anchors), anchors_kept=len(kept_urls), dropped_links=tuple(dropped[:examples]),
+                  inline_scripts=len(scripts), inline_script_chars=sum(len(s) for s in scripts),
+                  script_srcs=tuple(srcs[:examples]), script_srcs_total=len(srcs),
+                  link_tags=sum(1 for e in collector.entries if e[0] == 'tag_link'))
+    shell = len(anchors) <= 5 and (len(srcs) >= 1 or sum(len(s) for s in scripts) > 2000)
+    if reduced.items:
+        diagnosis = f'{len(reduced.items)} item(s) would be sent to the model ({len(reduced.text)} characters).'
+    elif shell:
+        diagnosis = ('Looks like a JavaScript app shell: only %d link(s) in the HTML and %d external script(s). The real '
+                     'content is probably loaded by scripts, which Radar does not run or fetch.' % (len(anchors), len(srcs)))
+    elif not anchors:
+        diagnosis = 'The page has no links and nothing resembling a specification reference.'
+    else:
+        diagnosis = (f'{len(anchors)} link(s), but none mentions a specification (openapi, swagger, redoc, spec, a '
+                     '.json/.yaml link with a label). If one of the dropped links below is the right one, the reducer is too strict.')
+    return PageReport(document.final_url, reduced, diagnosis=diagnosis, app_shell=shell, **report)
+
+
+def main(argv=None) -> int:
+    """python -m radar.discovery.llm_input PAGE_URL  — show what the language-model step would see (spends nothing)."""
+    import argparse
+    from radar.discovery.fetch import fetch_document
+    from radar.discovery.limits import DiscoveryBudget
+
+    parser = argparse.ArgumentParser(prog='python -m radar.discovery.llm_input', description=main.__doc__)
+    parser.add_argument('url', help='a documentation page')
+    parser.add_argument('--allow-loopback', action='store_true')
+    parser.add_argument('--dropped', type=int, default=12, help='how many discarded links to list')
+    args = parser.parse_args(argv)
+    result = fetch_document(args.url, DiscoveryBudget(), allow_loopback=args.allow_loopback)
+    if not result.ok:
+        print(f'Could not fetch the page: {result.failure.code} ({result.failure.reason})')
+        return 1
+    report = explain_page(result, examples=args.dropped)
+    print(f'Page: {report.page_url}  ({result.status}, {result.content_type}, {len(result.content):,} bytes)')
+    print(f'Diagnosis: {report.diagnosis}')
+    print(f'Links: {report.anchors_total} total, {report.anchors_kept} kept | inline scripts: {report.inline_scripts} '
+          f'({report.inline_script_chars:,} chars) | external scripts: {report.script_srcs_total} (never fetched or run) '
+          f'| <link> tags: {report.link_tags}')
+    if report.reduced.items:
+        print('\nWhat the model would see:')
+        for line in report.reduced.text.splitlines():
+            print(f'  {line[:200]}')
+    if report.dropped_links:
+        print('\nLinks the reducer discarded (first few):')
+        for url, label in report.dropped_links:
+            print(f'  "{label}"  ->  {url}')
+    if report.script_srcs:
+        print('\nExternal scripts on the page:')
+        for url in report.script_srcs:
+            print(f'  {url}')
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

@@ -402,3 +402,76 @@ def test_repeated_discovery_gives_the_same_decision_and_the_same_contract_bytes(
     assert first.package.root_document.content == second.package.root_document.content
     assert [(a.url, a.outcome) for a in first.attempts] == [(a.url, a.outcome) for a in second.attempts]
     assert first.limitations == second.limitations
+
+
+# --- a target that is itself a specification URL ------------------------------------------------------
+
+def test_a_specification_url_is_fetched_directly_and_nothing_else_is_searched():
+    routes = {}
+    with serve(routes) as (base, log):
+        routes['/downloads/pets.yaml'] = (200, {'Content-Type': 'application/yaml'},
+                                          raw(contract('https://api.pets.example')))  # declared host differs: fine
+        routes['/openapi.json'] = raw(contract(base, title='Some other contract'))
+        outcome = run(f'{base}/downloads/pets.yaml')
+    assert outcome.status is V and outcome.package.candidate.discovery_method == 'direct_url'
+    assert log == ['/downloads/pets.yaml']  # not even the other contract at a guessed location was fetched
+    evidence = {e.criterion: e.outcome for e in outcome.package.candidate.evidence if e.outcome}
+    assert evidence['provenance'] == 'match' and evidence['server_host'] == 'indeterminate'
+
+
+def test_an_endpoint_ending_in_json_is_not_mistaken_for_a_contract():
+    routes = {}
+    with serve(routes) as (base, log):
+        routes['/users.json'] = raw({'users': []})
+        routes['/openapi.json'] = raw(contract(base))
+        outcome = run(f'{base}/users.json')
+    assert outcome.status is V and outcome.package.candidate.discovery_method == 'common_location'
+    assert log[0] == '/users.json' and '/openapi.json' in log
+
+
+# --- the manual command ------------------------------------------------------------------------------
+
+def test_the_command_line_reports_each_outcome_and_exit_status(capsys):
+    from radar.discovery.__main__ import main
+    routes = {}
+    with serve(routes) as (base, _):
+        routes['/openapi.json'] = raw(contract(base))
+        assert main([f'{base}/v1/pets', '--method', 'GET', '--allow-loopback']) == 0
+        out = capsys.readouterr().out
+        assert 'STATUS: VALIDATED' in out and "'Pets API'" in out and '+ operation' in out and 'attempts:' in out
+        assert main([base, '--allow-loopback', '--json']) == 0
+        assert json.loads(capsys.readouterr().out)['status'] == 'validated'
+        assert main([base, '--allow-loopback', '--api-version', 'v9']) == 1
+        assert 'STATUS: REJECTED' in capsys.readouterr().out
+    assert main(['api.acme.com/path']) == 2 and 'error:' in capsys.readouterr().err
+
+
+def test_the_command_line_can_resolve_an_ambiguous_result_and_refuses_the_model_without_a_key(capsys, monkeypatch):
+    from radar.discovery.__main__ import main
+    routes = {}
+    with serve(routes) as (base, _):
+        routes['/openapi.json'] = raw(contract(base))
+        routes['/swagger.json'] = raw(contract(base, title='Admin API', paths={'/admin': {'get': {}}}))
+        assert main([base, '--allow-loopback']) == 1
+        out = capsys.readouterr().out
+        assert 'STATUS: AMBIGUOUS' in out and 'alternative:' in out
+        assert main([base, '--allow-loopback', '--select', f'{base}/swagger.json']) == 0
+        assert "'Admin API'" in capsys.readouterr().out
+        monkeypatch.delenv('MERGE_API_KEY', raising=False)
+        assert main([base, '--allow-loopback', '--llm']) == 2 and 'MERGE_API_KEY' in capsys.readouterr().err
+
+
+def test_the_command_line_reads_documentation_pages_you_name(capsys):
+    """Real documentation often lives on a different host than the API; a page you name is trusted as a seed."""
+    from radar.discovery.__main__ import main
+    routes = {}
+    with serve(routes) as (api, api_log):
+        with serve(routes) as (docs, docs_log):
+            routes['/guide/api'] = (200, {'Content-Type': 'text/html'}, b'<a href="/files/pets-openapi.json">OpenAPI definition</a>')
+            routes['/files/pets-openapi.json'] = raw(contract(api))
+            assert main([api, '--allow-loopback']) == 1  # the default probes on the API host find nothing
+            capsys.readouterr()
+            assert main([api, '--allow-loopback', '--docs-url', f'{docs}/guide/api']) == 0
+    out = capsys.readouterr().out
+    assert 'STATUS: VALIDATED' in out and 'via documentation_link' in out and f'{docs}/files/pets-openapi.json' in out
+    assert docs_log[:1] == ['/guide/api']

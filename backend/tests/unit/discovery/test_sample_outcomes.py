@@ -85,6 +85,12 @@ def scenarios(tmp_path):
            'One contract found at a guessed location, checked against an operation (GET /v1/pets).',
            request('https://api.acme.com/v1/pets', method='GET'),
            run({'/openapi.json': contract()}, 'https://api.acme.com/v1/pets', method='GET'))
+    yield ('validated-direct-url',
+           'The target is itself a specification file. It is fetched directly, nothing else is searched, and '
+           'servers declared on other hosts are not held against it.',
+           request('https://cdn.acme.com/specs/pets.json'),
+           run({'https://cdn.acme.com/specs/pets.json': contract(), '/openapi.json': contract(title='Unrelated')},
+               'https://cdn.acme.com/specs/pets.json'))
     yield ('validated-with-referenced-documents',
            'A multi-file contract: the root plus the two files it depends on, each listed with size and SHA-256.',
            request('api.acme.com'),

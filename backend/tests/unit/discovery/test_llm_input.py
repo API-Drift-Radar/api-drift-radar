@@ -72,9 +72,9 @@ def test_script_src_tags_and_spec_attributes():
         '<meta name="description" content="Acme OpenAPI spec"><meta name="viewport" content="x">'
         '<script src="/static/swagger-initializer.js"></script><script src="/static/app.js"></script>'
         '<redoc spec-url="/redoc.json"></redoc>'))
-    assert urls(reduced) == [
-        'https://docs.acme.com/api.json', 'https://docs.acme.com/alt.json',
-        'https://docs.acme.com/static/swagger-initializer.js', 'https://docs.acme.com/redoc.json']
+    assert urls(reduced) == ['https://docs.acme.com/api.json', 'https://docs.acme.com/alt.json',
+                             'https://docs.acme.com/redoc.json']
+    assert 'swagger-initializer' not in reduced.text  # external scripts are never read, so the model is not shown them
     assert any(item.text.startswith('TAG meta') for item in reduced.items)
     assert 'site.css' not in reduced.text and 'viewport' not in reduced.text
 
@@ -157,3 +157,100 @@ def test_unclosed_constructs_are_still_captured():
 def test_invalid_limits(name, value):
     with pytest.raises(ValueError):
         ReductionLimits(**{name: value})
+
+
+# --- diagnosis ---------------------------------------------------------------------------------
+
+from radar.discovery.llm_input import explain_page, main as explain_main  # noqa: E402
+
+
+def test_explain_a_page_with_a_specification_link_lists_what_the_model_would_see():
+    report = explain_page(page('<a href="/files/acme-spec.json">Download OpenAPI</a><a href="/pricing">Pricing</a>'
+                               '<a href="/about">About us</a>'))
+    assert report.anchors_total == 3 and report.anchors_kept == 1 and not report.app_shell
+    assert [label for _, label in report.dropped_links] == ['Pricing', 'About us']
+    assert '1 item(s) would be sent to the model' in report.diagnosis
+
+
+def test_explain_a_normal_page_with_no_specification_clues_names_the_discarded_links():
+    html = '<a href="/guides">Guides</a><a href="/reference/v1">API Reference</a>' + '<a href="/x">More</a>' * 6
+    report = explain_page(page(html))
+    assert report.reduced.items == () and not report.app_shell
+    assert ('https://docs.acme.com/reference/v1', 'API Reference') in report.dropped_links
+    assert len(report.dropped_links) == len(set(report.dropped_links))  # repeated links are listed once
+    assert 'none mentions a specification' in report.diagnosis and 'reducer is too strict' in report.diagnosis
+
+
+def test_explain_recognises_a_javascript_app_shell_and_lists_its_external_scripts():
+    html = ('<div id="root"></div><script src="/static/app.4f3a.js"></script><script src="/static/vendor.js"></script>'
+            '<a href="/login">Log in</a>')
+    report = explain_page(page(html))
+    assert report.app_shell and report.script_srcs_total == 2 and report.script_srcs[0].endswith('/static/app.4f3a.js')
+    assert 'JavaScript app shell' in report.diagnosis and 'does not run or fetch' in report.diagnosis
+
+
+def test_explain_a_big_inline_bundle_also_counts_as_an_app_shell():
+    report = explain_page(page('<div id="app"></div><script>' + 'var a=1;' * 600 + '</script>'))
+    assert report.app_shell and report.inline_scripts == 1 and report.inline_script_chars > 2000
+
+
+def test_explain_pages_that_cannot_be_reduced_say_why():
+    assert 'Only HTML pages' in explain_page(page('{}', content_type='application/json')).diagnosis
+    assert 'not retrieved' in explain_page(FetchResult(PAGE, PAGE, 404, None, None, None, (), FetchFailure('http_error', 'x'))).diagnosis
+    assert 'no links' in explain_page(page('<p>Nothing here</p>')).diagnosis
+
+
+def test_the_inspection_command_prints_a_free_report(capsys):
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    import threading
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            body = b'<a href="/ref">API Reference</a><a href="/s.json">OpenAPI</a><script src="/app.js"></script>'
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True).start()
+    try:
+        assert explain_main([f'http://127.0.0.1:{server.server_port}/docs', '--allow-loopback']) == 0
+    finally:
+        server.shutdown()
+        server.server_close()
+    out = capsys.readouterr().out
+    assert 'Diagnosis: 1 item(s)' in out and 'What the model would see' in out and 'LINK' in out
+    assert '"API Reference"' in out and 'External scripts on the page' in out and '/app.js' in out
+    assert explain_main(['http://127.0.0.1:1/x', '--allow-loopback']) == 1
+
+
+# --- noise the reducer must not send -----------------------------------------------------------
+
+def test_asset_link_tags_are_never_sent_even_when_their_names_mention_swagger():
+    reduced = reduce_page(page(
+        '<link rel="stylesheet" href="/swagger-ui.css"><link rel="icon" href="/swagger-favicon.png">'
+        '<link rel="preload" href="/openapi-fonts.woff2"><link rel="manifest" href="/swagger.webmanifest">'
+        '<link rel="service-desc" href="/api/description"><link rel="stylesheet service-desc" href="/odd.css">'))
+    assert urls(reduced) == ['https://docs.acme.com/api/description', 'https://docs.acme.com/odd.css']
+
+
+def test_external_scripts_are_not_sent_to_the_model():
+    reduced = reduce_page(page('<script src="/swagger-initializer.js"></script><script src="/openapi-bundle.js"></script>'))
+    assert reduced.items == () and reduced.text == ''
+
+
+def test_a_page_state_blob_mentioning_spec_is_not_a_clue_but_a_swagger_config_is():
+    blob = '<script>var state = {"title": "Product spec sheet", "spec": "x", "specification": 1};</script>'
+    assert reduce_page(page(blob)).items == ()
+    config = "<script>SwaggerUIBundle({url: '/openapi.json'}); var spec_url = 1;</script>"
+    assert [i.kind for i in reduce_page(page(config)).items] == ['script']
+
+
+def test_the_number_of_inline_script_snippets_is_capped():
+    many = ''.join(f'<script>swagger{i}(); {"x" * 600}</script>' for i in range(10))
+    assert len([i for i in reduce_page(page(many)).items if i.kind == 'script']) == 4

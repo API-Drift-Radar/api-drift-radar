@@ -6,7 +6,7 @@ mismatch rejects a candidate, anything that cannot be checked stays
 indeterminate and is never counted as a match.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import ipaddress
 import itertools
 import re
@@ -238,9 +238,15 @@ def _find(operations, method, path):
             if (method is None or m == method) and (_trim(t) == path or _segments_match(_trim(t), decoded))]
 
 
-def _relevant_servers(target, document):
-    """Servers that can describe the target host: not an absolute server on an unrelated host."""
+def _relevant_servers(target, document, everything=False):
+    """Servers that can describe the target host: not an absolute server on an unrelated host.
+
+    `everything` keeps every declared server, for a contract requested by its own URL, where the
+    target host is where the document lives, not the API's host.
+    """
     servers, _ = _servers(document)
+    if everything:
+        return servers
     return [s for s in servers
             if not (s.absolute and s.host is not None and hosts_related(target.hostname, s.host) is None)]
 
@@ -306,7 +312,8 @@ def versions_agree(hint, value) -> bool:
 
 
 def check_api_version(target: NormalizedTarget, summary: ContractSummary, document: Mapping[str, Any],
-                      source_url: str, *, mapping_api_version: str | None = None) -> MatchCheck:
+                      source_url: str, *, mapping_api_version: str | None = None,
+                      all_servers: bool = False) -> MatchCheck:
     """Does the requested provider API version fit this contract?
 
     Evidence in order of strength: an explicit provider-mapping version, then a version in
@@ -327,7 +334,7 @@ def check_api_version(target: NormalizedTarget, summary: ContractSummary, docume
                                 f'which fits the requested {shown}.')
         return check(MISMATCH, f'The provider mapping declares API version {_text(mapping_api_version, 60)}, '
                                f'which contradicts the requested {shown}.')
-    relevant = _relevant_servers(target, document)
+    relevant = _relevant_servers(target, document, everything=all_servers)
     segments = []
     for server in relevant:
         for segment in (server.path or '').split('/'):
@@ -442,6 +449,8 @@ def check_provenance(context: MatchContext) -> MatchCheck:
         return MatchCheck('provenance', outcome, description, context.source_url)
 
     target = context.target.hostname
+    if context.discovery_method == 'direct_url':
+        return check(MATCH, f'The user supplied this exact contract URL ({_text(context.source_url)}).')
     if context.discovery_method == 'provider_mapping':
         return check(MATCH, f'A provider mapping explicitly lists host {_text(target)} '
                             f'(source: {_text(context.discovery_source)}).')
@@ -470,11 +479,21 @@ def assess_match(context: MatchContext, validation: ValidationResult) -> MatchRe
     if not validation.ok:
         raise ValueError('Only a validated contract can be matched.')
     summary, document, source = validation.summary, validation.document, context.source_url
+    target = context.target
+    direct = context.discovery_method == 'direct_url'
+    if direct:  # the URL names the document, not an endpoint of the API
+        target = replace(target, path='/')
+    host = check_server_host(target, document, source)
+    if direct and host.outcome == MISMATCH:
+        host = MatchCheck('server_host', INDETERMINATE,
+                          'The contract was requested directly by its URL, so servers declared on other hosts '
+                          f'are not held against it. {host.description}', source)
     checks = (
-        check_server_host(context.target, document, source),
-        check_operation(context.target, summary, document, source),
-        check_api_version(context.target, summary, document, source, mapping_api_version=context.mapping_api_version),
-        check_product(context.target, summary, document, source, mapping_product=context.mapping_product),
+        host,
+        check_operation(target, summary, document, source),
+        check_api_version(target, summary, document, source, mapping_api_version=context.mapping_api_version,
+                          all_servers=direct),
+        check_product(target, summary, document, source, mapping_product=context.mapping_product),
         check_provenance(context),
     )
     mismatches = [c for c in checks if c.outcome == MISMATCH]

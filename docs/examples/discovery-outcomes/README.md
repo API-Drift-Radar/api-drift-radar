@@ -12,6 +12,7 @@ and review the diff. Each file is `{ description, request, outcome }`.
 | File | Status | Shows |
 |---|---|---|
 | `validated-common-location.json` | validated | One contract, checked against an operation |
+| `validated-direct-url.json` | validated | The target was a specification URL; fetched directly, nothing else searched |
 | `validated-with-referenced-documents.json` | validated | A multi-file contract; each referenced file listed with size and SHA-256 |
 | `validated-provider-version-selected.json` | validated | A version hint selected one of two provider versions; the other is a rejected candidate |
 | `ambiguous-two-contracts.json` | ambiguous | Two distinct contracts in `alternatives`; nothing chosen |

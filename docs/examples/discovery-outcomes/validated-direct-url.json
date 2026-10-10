@@ -1,0 +1,130 @@
+{
+  "description": "The target is itself a specification file. It is fetched directly, nothing else is searched, and servers declared on other hosts are not held against it.",
+  "request": {
+    "target": "https://cdn.acme.com/specs/pets.json"
+  },
+  "outcome": {
+    "status": "validated",
+    "package": {
+      "source_url": "https://cdn.acme.com/specs/pets.json",
+      "discovery_method": "direct_url",
+      "discovery_source": "https://cdn.acme.com/specs/pets.json",
+      "content_fingerprint": "9630265182fe73a77886245b2835ebc542bb655c3a97de29a9ab26253b7730d2",
+      "openapi_version": "3.0.3",
+      "title": "Acme Pets API",
+      "info_version": "1.0.0",
+      "server_urls": [
+        "https://api.acme.com/v1"
+      ],
+      "path_count": 2,
+      "operation_count": 4,
+      "root_document": {
+        "url": "https://cdn.acme.com/specs/pets.json",
+        "media_type": "application/json",
+        "size_bytes": 301,
+        "sha256": "9a1779068d473c91eb667bbc68a34f031ee172351f95aa4e408c83648a9d16b5",
+        "retrieved_at": "2026-10-09T12:00:00Z"
+      },
+      "referenced_documents": [],
+      "evidence": [
+        {
+          "criterion": "server_host",
+          "outcome": "indeterminate",
+          "description": "The contract was requested directly by its URL, so servers declared on other hosts are not held against it. None of the declared server hosts (api.acme.com) is related to the target host cdn.acme.com.",
+          "source_url": "https://cdn.acme.com/specs/pets.json"
+        },
+        {
+          "criterion": "operation",
+          "outcome": "not_requested",
+          "description": "No endpoint path or method was given.",
+          "source_url": "https://cdn.acme.com/specs/pets.json"
+        },
+        {
+          "criterion": "api_version",
+          "outcome": "not_requested",
+          "description": "No API version was requested.",
+          "source_url": "https://cdn.acme.com/specs/pets.json"
+        },
+        {
+          "criterion": "product",
+          "outcome": "not_requested",
+          "description": "No product was requested.",
+          "source_url": "https://cdn.acme.com/specs/pets.json"
+        },
+        {
+          "criterion": "provenance",
+          "outcome": "match",
+          "description": "The user supplied this exact contract URL (https://cdn.acme.com/specs/pets.json).",
+          "source_url": "https://cdn.acme.com/specs/pets.json"
+        }
+      ],
+      "limitations": [
+        "Structural validation only; the document was not checked against the official OpenAPI JSON Schema.",
+        "Matching applies explicit rules to the contract text and its origin; it does not prove identity.",
+        "Only $ref references are followed; operationRef, discriminator.mapping and externalValue targets are not captured."
+      ]
+    },
+    "alternatives": [],
+    "candidates": [
+      {
+        "source_url": "https://cdn.acme.com/specs/pets.json",
+        "discovery_method": "direct_url",
+        "discovery_source": "https://cdn.acme.com/specs/pets.json",
+        "accepted": true,
+        "rejections": [],
+        "evidence": [
+          {
+            "criterion": "server_host",
+            "outcome": "indeterminate",
+            "description": "The contract was requested directly by its URL, so servers declared on other hosts are not held against it. None of the declared server hosts (api.acme.com) is related to the target host cdn.acme.com.",
+            "source_url": "https://cdn.acme.com/specs/pets.json"
+          },
+          {
+            "criterion": "operation",
+            "outcome": "not_requested",
+            "description": "No endpoint path or method was given.",
+            "source_url": "https://cdn.acme.com/specs/pets.json"
+          },
+          {
+            "criterion": "api_version",
+            "outcome": "not_requested",
+            "description": "No API version was requested.",
+            "source_url": "https://cdn.acme.com/specs/pets.json"
+          },
+          {
+            "criterion": "product",
+            "outcome": "not_requested",
+            "description": "No product was requested.",
+            "source_url": "https://cdn.acme.com/specs/pets.json"
+          },
+          {
+            "criterion": "provenance",
+            "outcome": "match",
+            "description": "The user supplied this exact contract URL (https://cdn.acme.com/specs/pets.json).",
+            "source_url": "https://cdn.acme.com/specs/pets.json"
+          }
+        ],
+        "limitations": [
+          "Structural validation only; the document was not checked against the official OpenAPI JSON Schema.",
+          "Matching applies explicit rules to the contract text and its origin; it does not prove identity.",
+          "Only $ref references are followed; operationRef, discriminator.mapping and externalValue targets are not captured."
+        ]
+      }
+    ],
+    "attempts": [
+      {
+        "url": "https://cdn.acme.com/specs/pets.json",
+        "stage": "direct_url",
+        "outcome": "retrieved",
+        "reason": null
+      }
+    ],
+    "limitations": [
+      "Discovery is bounded: it tried provider mappings, common specification locations and links in documentation pages, within fixed request, time and size limits.",
+      "The contract was requested directly by its URL, so no other locations were searched.",
+      "Structural validation only; the document was not checked against the official OpenAPI JSON Schema.",
+      "Matching applies explicit rules to the contract text and its origin; it does not prove identity.",
+      "Only $ref references are followed; operationRef, discriminator.mapping and externalValue targets are not captured."
+    ]
+  }
+}

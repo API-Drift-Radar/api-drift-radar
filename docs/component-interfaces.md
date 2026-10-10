@@ -457,8 +457,17 @@ evidence; `api.github.com` returned two alternatives (~3 s), `select_candidate` 
 A sub-product hint such as `product="billing"` was rejected for Stripe because the contract's own
 text never says it (see the matching limits).
 
-Not done: a direct-URL strategy (a target that is itself a spec URL), the optional LLM fallback,
-and no separate status for "search cut short".
+Direct URL: a target whose path ends in `.json`, `.yaml` or `.yml` is fetched exactly as given first
+(`direct_url`). The URL names the document, not an endpoint or the API's host: servers declared on other
+hosts are indeterminate, not a mismatch; operation checks do not apply; provenance is positive (the user
+supplied it); version and product hints still reject, and a version hint can only contradict a version stated
+in the contract's server paths. A valid result is the answer and no other location is searched. If the
+response is not a contract (an API endpoint such as `/users.json`, a 404, an invalid file) the normal
+strategies still run. A document over the per-document size limit (5 MiB by default) is refused with a note
+naming `FetchLimits.max_document_bytes`; only provider-mapping entries carry their own allowance.
+Checked live 2026-10-09: Stripe's raw spec URL and `api.weather.gov/openapi.yaml` validated with a single fetch.
+
+Not done: no separate status for "search cut short".
 
 ## Issue #9 acceptance evidence
 
@@ -496,6 +505,57 @@ Not demonstrated by fixtures and not claimed: behaviour against providers other 
 SHA-256 and a content fingerprint, and rejection strings are split into `{stage, code, reason}`. Nine
 generated samples with field notes are in `docs/examples/discovery-outcomes/` (see its README); a test fails
 if they drift from the code. The field names are a proposal for the API owner, not a final wire format.
+
+## Language-model fallback and cost tracking (issue #9, optional)
+
+Off by default. It runs only when deterministic discovery found no valid contract and at least one
+documentation page was fetched; a directly requested contract that validates never reaches it.
+
+```sh
+export MERGE_API_KEY=...            # never commit it; .env and .radar/ are gitignored
+export MERGE_MODEL=anthropic/claude-haiku-4-5   # optional; this is the default (a small, inexpensive model)
+python -m radar.discovery.merge_gateway         # one tiny call: checks key + model + cost tracking (< $0.001)
+python -m radar.discovery.llm_cost .radar/llm_cost.jsonl --budget 5   # what has been spent
+```
+```python
+from radar.discovery.llm_cost import CostLedger, LlmLimits
+from radar.discovery.merge_gateway import MergeSuggester
+
+outcome = discover(request, llm_suggester=MergeSuggester.from_env(),
+                   llm_ledger=CostLedger(".radar/llm_cost.jsonl", LlmLimits(max_total_usd=5.0)))
+```
+
+How it works: each fetched documentation page is reduced to its few spec-related items (`llm_input`), a model
+is asked which of them is the specification (`llm_suggestions`), and only suggestions that are real link
+targets, or quoted in a script/tag, on that page are kept (a URL mentioned only in a link's label is not). The
+kept URLs go through the normal fetcher and the same validation, matching and reference capture as every other
+candidate (`discovery_method` is `llm_suggestion`; provenance is positive only if the contract is served from
+the target's host). The model can suggest a link; it can never certify a contract. The page text is untrusted
+data: the delimiters are neutralised and the instructions tell the model to ignore anything in it.
+
+Provider: `MergeSuggester` speaks Merge Gateway's native Responses API, `POST {base}/responses`, with `store:
+false` and `include_routing_metadata: true`. `usage.cost` is the provider's charge in USD (null when unpriced);
+the gateway's own fee arrives separately as `routing.merge_fee_usd`, so spend counted is cost plus fee. The key
+is read only from `MERGE_API_KEY`, sent only in the Authorization header, and never appears in a repr, error,
+ledger line or log; redirects are not followed so it cannot be forwarded; plain HTTP is refused. Written from the
+documented schema and tested against a local fake gateway; checked against the real service only by the smoke
+command above, which you run with your own key.
+
+Cost control (`llm_cost`): `LlmLimits` defaults: $5.00 total, 2 calls per run, 16,000 input characters, 400
+output tokens. The ledger (`.radar/llm_cost.jsonl`, one JSON line per call) records model, vendor, tokens,
+provider cost, gateway fee, total, whether the total was estimated, and the outcome (`ok`, `error`, `cached`,
+`refused`); it stores a prompt fingerprint, never prompts, pages, replies or credentials. It is the budget's
+memory, so the cap holds across runs. Before every call it refuses if the ledger is unreadable (fail closed),
+the prompt is too large, the per-run limit is reached, the cap is reached, or one more worst-case call could cross
+it (worst case is priced pessimistically at $5/$25 per million tokens). An unpriced reply is counted at that
+estimate, never as free. Failed calls are recorded at $0 because providers normally do not bill them.
+The outcome's `limitations` carry a one-line summary (calls, tokens, dollars this run, ledger total) and each
+call appears in `attempts` with stage `llm_fallback`. Credential, credit and rate-limit errors end the
+consultation after one try.
+
+Limits: one process at a time per ledger file; the budget guard is only as good as the ledger file being kept;
+a token estimate of 3 characters per token is deliberately pessimistic, not exact; no response caching across
+runs; only documentation pages (not arbitrary links) are read.
 
 ## Issue #9 status and resume plan
 

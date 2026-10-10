@@ -14,6 +14,7 @@ from radar.domain.discovery import ContractCandidate, DiscoveryRequest, Normaliz
 
 
 COMMON_SPEC_PATHS = ("/openapi.json", "/openapi.yaml", "/swagger.json")
+SPEC_EXTENSIONS = (".json", ".yaml", ".yml")
 SEARCH_LIMITATIONS = (
     "Only common origin-level specification locations were searched.",
     "Provider mappings and official-documentation links were not searched.",
@@ -123,3 +124,36 @@ def fetch_candidates(target, locations, budget, *, allow_loopback=False, limitat
             break
     return CandidateSearchResult(target, tuple(candidates), tuple(fetches), skipped,
                                  stop_reason, limitations)
+
+
+DIRECT_LIMITATIONS = (
+    "The target looked like a specification file, so exactly that URL was fetched.",
+    "The document has not been validated as OpenAPI or checked against any requested context.",
+)
+
+
+def looks_like_spec_url(target: NormalizedTarget) -> bool:
+    return urlsplit(target.normalized_url).path.lower().endswith(SPEC_EXTENSIONS)
+
+
+def search_direct_url(
+    request: DiscoveryRequest,
+    budget: DiscoveryBudget,
+    *,
+    allow_loopback: bool = False,
+    cache: dict | None = None,
+) -> CandidateSearchResult:
+    """Fetch the target itself when its path ends in .json, .yaml or .yml; otherwise do nothing.
+
+    The URL is treated as the document, not as an endpoint of the API. The result is one unvalidated
+    candidate (discovery method `direct_url`). A path with such an extension can equally be an API
+    endpoint (`/users.json`), so a response that is not a contract must be treated as a miss.
+    """
+    target = normalize_target(request)
+    if not looks_like_spec_url(target):
+        return CandidateSearchResult(target, (), (), (), None, DIRECT_LIMITATIONS)
+    candidate = ContractCandidate(
+        source_url=target.normalized_url, discovery_method="direct_url", discovery_source=target.normalized_url,
+        limitations=("OpenAPI validity and relevance have not been assessed.",))
+    return fetch_candidates(target, (candidate,), budget, allow_loopback=allow_loopback,
+                            limitations=DIRECT_LIMITATIONS, cache=cache)
