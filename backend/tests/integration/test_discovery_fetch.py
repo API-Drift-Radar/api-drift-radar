@@ -68,3 +68,33 @@ def test_print_real_results(server):
     blocked = fetch_document(server, DiscoveryBudget())
     print(f'Default loopback policy: {blocked.failure.code}')
     assert blocked.failure.code == 'blocked_destination'
+
+
+def test_the_link_header_is_exposed_on_a_successful_response():
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    import threading
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header('Link', '</openapi.json>; rel="service-desc"; type="application/openapi+json"')
+            self.send_header('Link', '</docs>; rel="service-doc"')
+            self.send_header('Content-Length', '2')
+            self.end_headers()
+            self.wfile.write(b'{}')
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True).start()
+    try:
+        from radar.discovery.fetch import fetch_document
+        from radar.discovery.limits import DiscoveryBudget
+        budget = DiscoveryBudget()
+        result = fetch_document(f'http://127.0.0.1:{server.server_port}/', budget, allow_loopback=True)
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert result.ok and 'rel="service-desc"' in result.link_header and 'rel="service-doc"' in result.link_header
+    assert budget.hosts == {f'127.0.0.1:{server.server_port}'}

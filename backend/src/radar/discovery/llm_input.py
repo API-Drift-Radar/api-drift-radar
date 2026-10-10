@@ -1,8 +1,9 @@
-"""Reduce a fetched documentation page to the few items that could point to a spec.
+"""Reduce a fetched documentation page to what a model needs to pick the next link to examine.
 
-Pure and deterministic: no network, no model, no JavaScript execution. The
-output is the only page content a later LLM step may see, and the only text
-against which its suggestions may be verified. The page is untrusted data.
+Pure and deterministic: no network, no model, no JavaScript execution. The output is the only page content a
+model may see: the title and headings for context, the links (specification links, and navigation links that
+may lead toward one indirectly) each with an identifier such as L3 that a model can choose, and the snippets
+of viewer configuration. A model chooses identifiers; it never supplies a URL. The page is untrusted data.
 """
 
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ import re
 from urllib.parse import urldefrag, urljoin, urlsplit
 
 from radar.discovery.fetch import FetchResult
+from radar.discovery.link_scoring import MODEL_MIN_SCORE, score_link
 
 
 KEYWORDS = re.compile(
@@ -35,9 +37,12 @@ class ReductionLimits:
     max_items: int = 100
     max_snippet_chars: int = 500
     max_label_chars: int = 120
+    max_links: int = 30  # selectable links kept; specification links first, then the most promising navigation links
+    max_headings: int = 6
 
     def __post_init__(self):
-        for name in ('max_page_bytes', 'max_chars', 'max_items', 'max_snippet_chars', 'max_label_chars'):
+        for name in ('max_page_bytes', 'max_chars', 'max_items', 'max_snippet_chars', 'max_label_chars', 'max_links',
+                     'max_headings'):
             value = getattr(self, name)
             if type(value) is not int or value <= 0:
                 raise ValueError(f'Invalid {name}.')
@@ -45,10 +50,11 @@ class ReductionLimits:
 
 @dataclass(frozen=True)
 class ReducedItem:
-    kind: str  # 'link', 'script', 'tag' or 'attribute'
+    kind: str  # 'link', 'script', 'tag', 'attribute', 'heading' or 'title'
     text: str  # the exact line shown to a model
     url: str | None = None
     label: str | None = None
+    id: str | None = None  # L1, L2, ...: set on selectable items (those with a URL); a model chooses these
 
 
 @dataclass(frozen=True)
@@ -74,6 +80,8 @@ class _Collector(HTMLParser):
         self._anchor = None
         self._script = None
         self._ignored = None  # style/title content is never label text
+        self._heading = None
+        self._title = None
 
     def _flush_anchor(self):
         if self._anchor is not None:
@@ -96,6 +104,10 @@ class _Collector(HTMLParser):
                 self._script = []
         elif tag in ('style', 'title'):
             self._ignored = tag
+            if tag == 'title':
+                self._title = []
+        elif tag in ('h1', 'h2', 'h3'):
+            self._heading = []
         elif tag == 'link' and attrs.get('href'):
             self.entries.append(('tag_link', attrs))
         elif tag == 'meta':
@@ -105,6 +117,10 @@ class _Collector(HTMLParser):
                 self.entries.append(('attribute', (tag, name, attrs[name])))
 
     def handle_data(self, data):
+        if self._heading is not None:
+            self._heading.append(data)
+        if self._title is not None:
+            self._title.append(data)
         if self._script is not None:
             self._script.append(data)
         elif self._ignored is None and self._anchor is not None:
@@ -117,7 +133,13 @@ class _Collector(HTMLParser):
             self.entries.append(('script', ''.join(self._script)))
             self._script = None
         elif tag == self._ignored:
+            if tag == 'title' and self._title is not None:
+                self.entries.append(('title', ''.join(self._title)))
+                self._title = None
             self._ignored = None
+        if tag in ('h1', 'h2', 'h3') and self._heading is not None:
+            self.entries.append(('heading', ''.join(self._heading)))
+            self._heading = None
 
     def close(self):
         super().close()
@@ -166,7 +188,7 @@ def _relevant(url, label=''):
 
 
 def reduce_page(document: FetchResult, limits: ReductionLimits | None = None) -> ReducedPage:
-    """Keep spec-related links, script snippets and tags; drop everything else."""
+    """Keep the title and headings, specification and navigation links (with identifiers), and viewer configuration."""
     limits = limits or ReductionLimits()
     page_url = document.final_url
     if not document.ok or document.content is None:
@@ -189,12 +211,27 @@ def reduce_page(document: FetchResult, limits: ReductionLimits | None = None) ->
 
     base = urljoin(page_url, collector.base) if collector.base else page_url
     candidates = []
+    link_rank = {}  # candidate index -> (is a specification link, navigation score)
+    headings = 0
     for kind, payload in collector.entries:
-        if kind == 'link':
+        if kind == 'title':
+            text = _clean(payload, limits.max_label_chars)
+            if text:
+                candidates.append(ReducedItem('title', f'TITLE "{text}"'))
+        elif kind == 'heading':
+            text = _clean(payload, limits.max_label_chars)
+            if text and headings < limits.max_headings:
+                headings += 1
+                candidates.append(ReducedItem('heading', f'HEADING "{text}"'))
+        elif kind == 'link':
             url = _resolve(base, payload[0])
             label = _clean(payload[1], limits.max_label_chars)
-            if url and _relevant(url, label):
-                candidates.append(ReducedItem('link', f'LINK {url} "{label}"', url, label))
+            if url:
+                specification = _relevant(url, label)
+                score = score_link(url, label)
+                if specification or score >= MODEL_MIN_SCORE:
+                    link_rank[len(candidates)] = (specification, score)
+                    candidates.append(ReducedItem('link', f'LINK {url} "{label}"', url, label))
         elif kind == 'script_src':
             continue  # external scripts are never fetched or run, so a model cannot use them; explain_page lists them
         elif kind == 'script':
@@ -221,13 +258,20 @@ def reduce_page(document: FetchResult, limits: ReductionLimits | None = None) ->
             if url:
                 candidates.append(ReducedItem('attribute', f'ATTRIBUTE <{tag} {name}> {url}', url))
 
-    items, lines, size, seen = [], [], 0, set()
     truncated = False
     notes = []
+    if len(link_rank) > limits.max_links:  # keep specification links first, then the highest navigation scores
+        keep = set(sorted(link_rank, key=lambda i: (not link_rank[i][0], -link_rank[i][1], i))[:limits.max_links])
+        candidates = [c for i, c in enumerate(candidates) if i not in link_rank or i in keep]
+        truncated = True
+    items, lines, size, seen, selectable = [], [], 0, set(), 0
     for item in candidates:
         if item.text in seen:
             continue
         seen.add(item.text)
+        if item.url:  # selectable: give it an identifier the model can choose
+            selectable += 1
+            item = ReducedItem(item.kind, f'L{selectable} {item.text}', item.url, item.label, f'L{selectable}')
         if len(items) >= limits.max_items or size + len(item.text) + 1 > limits.max_chars:
             truncated = True
             break

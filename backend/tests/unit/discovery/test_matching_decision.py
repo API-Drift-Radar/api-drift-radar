@@ -37,12 +37,16 @@ def outcomes(result):
     (dict(source='https://api.acme.com/openapi.json'), MATCH, 'the same host as'),
     (dict(source='https://acme.com/openapi.json'), MATCH, 'a parent domain of'),
     (dict(source='https://eu.api.acme.com/spec'), MATCH, 'a subdomain of'),
+    # A link alone is a recorded connection, not provenance: the target's own docs page linking to a contract
+    # hosted elsewhere does not establish that the provider published it or that it applies.
     (dict(how='documentation_link', source='https://cdn.example.net/spec.json', via='https://api.acme.com/docs'),
-     MATCH, 'linked from the documentation page'),
+     INDETERMINATE, 'A link alone does not establish ownership or applicability'),
     (dict(how='documentation_link', source='https://cdn.example.net/spec.json', via='https://docs.acme.com/api'),
      INDETERMINATE, 'does not establish'),  # a sibling subdomain is not related to api.acme.com
     (dict(how='swagger_ui_config', source='https://cdn.example.net/spec.json', via='https://api.acme.com/docs'),
-     MATCH, 'linked from the documentation page'),
+     INDETERMINATE, 'the connection is recorded'),
+    (dict(how='api_catalog', source='https://cdn.example.net/spec.json', via='https://api.acme.com/.well-known/api-catalog'),
+     INDETERMINATE, 'A link alone does not establish ownership or applicability'),
     (dict(how='documentation_link', source='https://cdn.example.net/spec.json', via='https://blog.other.test/post'),
      INDETERMINATE, 'does not establish'),
     (dict(how='llm_suggestion', source='https://cdn.example.net/spec.json', via='https://docs.acme.com/api'),

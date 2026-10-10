@@ -1,0 +1,239 @@
+{
+  "description": "Documentation data (apiDoc) was found but it is not an OpenAPI contract: documentation only, nothing accepted. Not proof that no contract exists.",
+  "request": {
+    "target": "https://api.acme.com/api/fruit/apple",
+    "method": "GET"
+  },
+  "outcome": {
+    "status": "not_found",
+    "package": null,
+    "alternatives": [],
+    "candidates": [],
+    "attempts": [
+      {
+        "url": "https://api.acme.com/openapi.json",
+        "stage": "common_location",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/openapi.yaml",
+        "stage": "common_location",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/swagger.json",
+        "stage": "common_location",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/doc/index.html",
+        "stage": "documentation_page",
+        "outcome": "retrieved",
+        "reason": null
+      },
+      {
+        "url": "https://api.acme.com/.well-known/api-catalog",
+        "stage": "navigation:well_known_api_catalog",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/doc/main.js",
+        "stage": "navigation:requirejs_data_main",
+        "outcome": "retrieved",
+        "reason": null
+      },
+      {
+        "url": "https://api.acme.com/",
+        "stage": "navigation:origin_root",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/v3/api-docs",
+        "stage": "navigation:framework_probe",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/api/v3/api-docs",
+        "stage": "navigation:framework_probe",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/openapi/v1.json",
+        "stage": "navigation:framework_probe",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/api/openapi/v1.json",
+        "stage": "navigation:framework_probe",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/swagger/v1/swagger.json",
+        "stage": "navigation:framework_probe",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/api/swagger/v1/swagger.json",
+        "stage": "navigation:framework_probe",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/v2/api-docs",
+        "stage": "navigation:framework_probe",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/api/v2/api-docs",
+        "stage": "navigation:framework_probe",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      }
+    ],
+    "limitations": [
+      "Discovery is bounded: it tried provider mappings, common specification locations, documentation pages and links, and configuration they point to, within fixed request, time, size and host limits.",
+      "Published documentation data (apidoc) was found (2 file(s), first: https://api.acme.com/doc/api_project.js), but it is not an OpenAPI contract and no supported contract was accepted from it.",
+      "Failing to find a contract is not proof that none is published."
+    ],
+    "artifacts": [
+      {
+        "category": "documentation_only",
+        "kind": "apidoc",
+        "url": "https://api.acme.com/doc/api_project.js",
+        "detail": "apiDoc documentation data, referenced by a RequireJS data-main script. It is not an OpenAPI contract and no apiDoc adapter exists.",
+        "discovery_method": "requirejs_data_main",
+        "parent_url": "https://api.acme.com/doc/main.js",
+        "status": null
+      },
+      {
+        "category": "documentation_only",
+        "kind": "apidoc",
+        "url": "https://api.acme.com/doc/api_data.js",
+        "detail": "apiDoc documentation data, referenced by a RequireJS data-main script. It is not an OpenAPI contract and no apiDoc adapter exists.",
+        "discovery_method": "requirejs_data_main",
+        "parent_url": "https://api.acme.com/doc/main.js",
+        "status": null
+      }
+    ],
+    "trail": [
+      {
+        "url": "https://api.acme.com/doc/index.html",
+        "parent_url": null,
+        "mechanism": "documentation_seed",
+        "kind": "page",
+        "depth": 0,
+        "outcome": "fetched"
+      },
+      {
+        "url": "https://api.acme.com/.well-known/api-catalog",
+        "parent_url": null,
+        "mechanism": "well_known_api_catalog",
+        "kind": "catalog",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/doc/main.js",
+        "parent_url": "https://api.acme.com/doc/index.html",
+        "mechanism": "requirejs_data_main",
+        "kind": "script",
+        "depth": 1,
+        "outcome": "fetched"
+      },
+      {
+        "url": "https://api.acme.com/",
+        "parent_url": null,
+        "mechanism": "origin_root",
+        "kind": "page",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/v3/api-docs",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/api/v3/api-docs",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/openapi/v1.json",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/api/openapi/v1.json",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/swagger/v1/swagger.json",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/api/swagger/v1/swagger.json",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/v2/api-docs",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/api/v2/api-docs",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "failed"
+      }
+    ],
+    "coverage": {
+      "complete": true,
+      "limits_reached": [],
+      "leads_examined": 12,
+      "leads_unexamined": 0,
+      "unexamined": [],
+      "requests_used": 15,
+      "requests_limit": 20,
+      "reserved_for_references": 5,
+      "hosts_contacted": []
+    }
+  }
+}

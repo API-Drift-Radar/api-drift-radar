@@ -1,33 +1,29 @@
-"""The optional language-model fallback: suggest documentation links when deterministic discovery found nothing.
+"""The optional language-model fallback: choose which observed links to examine next when navigation found nothing.
 
-Off unless the caller passes a suggester. For each documentation page already fetched, the page is reduced to
-the few spec-related items, a model is asked which of them is the specification, and only suggestions that
-literally appear on the page are kept. The resulting URLs are fetched through the shared bounded fetcher and
-judged by the same validation, matching and reference-capture rules as every other candidate: the model can
-suggest a link, never certify a contract. Every call is authorised against the budget first and recorded in the
-cost ledger afterwards.
+Off unless the caller passes a suggester. Each documentation page already fetched is reduced to its title,
+headings, links (each with an identifier) and configuration snippets; a model chooses identifiers; the chosen
+links become LEADS for the ordinary navigation queue. This module fetches nothing: the queue fetches them under
+the shared request, byte, time, depth and host limits, and any contract reached is judged by the same
+validation, matching and reference capture as every other candidate. The model can steer the search, never
+certify a contract or supply a URL. Every call is authorised against the spending limits first and recorded in
+the cost ledger afterwards.
 """
 
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Callable, Sequence
 
-from radar.discovery.candidates import CandidateSearchResult, fetch_candidates
 from radar.discovery.fetch import FetchResult
 from radar.discovery.input import normalize_target
-from radar.discovery.limits import DiscoveryBudget
 from radar.discovery.llm_cost import BudgetRefused, CostLedger
 from radar.discovery.llm_input import ReductionLimits, reduce_page
 from radar.discovery.llm_suggestions import (
     LlmReply, Suggester, SuggesterError, build_prompt, parse_suggestions,
 )
-from radar.domain.discovery import ContractCandidate, DiscoveryRequest, MatchingEvidence
+from radar.discovery.navigation import P_LLM, Lead
+from radar.domain.discovery import DiscoveryRequest
 
 STOP_CODES = frozenset({'unauthorized', 'payment_required', 'missing_api_key', 'invalid_api_key', 'rate_limited',
                         'insecure_base_url'})
-LIMITATIONS = (
-    'Suggested by a language model reading a documentation page; the link appears on that page.',
-    'OpenAPI validity and relevance have not been assessed.',
-)
 
 
 @dataclass(frozen=True)
@@ -44,7 +40,7 @@ class FallbackCall:
 
 @dataclass(frozen=True)
 class FallbackResult:
-    search: CandidateSearchResult
+    leads: tuple[Lead, ...]  # links to examine next, for the navigation queue to fetch
     calls: tuple[FallbackCall, ...]
 
     @property
@@ -54,28 +50,26 @@ class FallbackResult:
 
 def search_llm_fallback(
     request: DiscoveryRequest,
-    budget: DiscoveryBudget,
     pages: Sequence[FetchResult],
     suggester: Suggester,
     ledger: CostLedger,
     *,
     max_pages: int = 2,
     reduction_limits: ReductionLimits | None = None,
-    allow_loopback: bool = False,
-    cache: dict | None = None,
     response_cache: dict | None = None,
+    depth_of: Callable[[str], int] = lambda url: 0,
 ) -> FallbackResult:
-    """Consult the model about each page, then fetch (not trust) what it suggests.
+    """Consult the model about each page and return the links it chose, as leads. Nothing is fetched here.
 
     A page whose question was already answered in this run costs nothing (`response_cache`). A refused or
     failed call is recorded and, for credential, credit and rate-limit failures, ends the consultation.
     """
     target = normalize_target(request)
     response_cache = {} if response_cache is None else response_cache
-    calls, suggested = [], {}
+    calls, leads = [], {}
     for page in pages[:max_pages]:
         reduced = reduce_page(page, reduction_limits)
-        if not reduced.items:
+        if not any(item.id for item in reduced.items):  # nothing the model could choose
             calls.append(FallbackCall(page.final_url, 'no_relevant_items',
                                       '; '.join(n.code for n in reduced.notes) or 'nothing on the page looked like a specification link'))
             continue
@@ -114,13 +108,6 @@ def search_llm_fallback(
         calls.append(FallbackCall(page.final_url, outcome_hint or outcome, detail, suggestions.urls, suggestions.rejected,
                                   usd, reply.usage.input_tokens, reply.usage.output_tokens))
         for url in suggestions.urls:
-            suggested.setdefault(url, page.final_url)
+            leads.setdefault(url, Lead(url, 'page', 'llm_suggestion', page.final_url, depth_of(page.final_url) + 1, P_LLM))
 
-    candidates = tuple(ContractCandidate(
-        source_url=url, discovery_method='llm_suggestion', discovery_source=page_url,
-        evidence=(MatchingEvidence('llm_suggestion',
-                                   f'A language model reading {page_url} suggested this link; it appears on that page.',
-                                   page_url),),
-        limitations=LIMITATIONS) for url, page_url in suggested.items())
-    search = fetch_candidates(target, candidates, budget, allow_loopback=allow_loopback, limitations=LIMITATIONS, cache=cache)
-    return FallbackResult(search, tuple(calls))
+    return FallbackResult(tuple(leads.values()), tuple(calls))

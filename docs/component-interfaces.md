@@ -557,6 +557,128 @@ Limits: one process at a time per ledger file; the budget guard is only as good 
 a token estimate of 3 characters per token is deliberately pessimistic, not exact; no response caching across
 runs; only documentation pages (not arbitrary links) are read.
 
+## Discovery improvements: navigation, viewer configuration, honest reporting (issue #9, increment 2)
+
+This increment widens where discovery looks and how honestly it reports; it does not widen what is accepted. Only OpenAPI
+3.0/3.1 is a supported contract, and `validated` still means structural validation only. Everything below produces leads
+or findings; acceptance remains the same deterministic validation, matching and reference capture.
+
+### Navigation (`navigation.py`)
+
+A prioritised queue of leads. Each lead records its **parent URL**, the **mechanism** that produced it, its role (`page`,
+`description`, `catalog`, `config`, `script`) and depth, and every step is kept in `outcome.trail`. Priorities prefer explicit
+publication over navigation over guessing:
+
+| Order | Mechanism (`discovery_method` when it is a contract) | Source |
+|---|---|---|
+| 1 | `well_known_api_catalog`, `api_catalog` | RFC 9727 JSON Linkset at `/.well-known/api-catalog`; entries whose anchor host is related to the target (others are recorded as `skipped_unrelated`); nested catalogues, loops de-duplicated |
+| 2 | `service_desc_link`, `service_doc_link`, `api_catalog_link` | HTTP `Link` headers and HTML `<link rel>` / `<a rel>` (RFC 8631, RFC 8288) on any fetched response |
+| 3 | `documentation_link`, `spec_url_attribute`, `swagger_ui_config`, `redoc_config`, `swagger_config_url_entry`, `embedded_spec` | links and viewer configuration on documentation pages (below) |
+| 4 | `viewer_initializer`, `requirejs_data_main` (scripts), `swagger_config_url` (configuration JSON) | small linked assets |
+| 5 | `llm_suggestion` | a link a model chose among links it was shown (optional) |
+| 6 | `origin_root`, `documentation_navigation` | the origin's homepage and the developer/API/reference links on it, scored by keyword; at most 6 followed per page, cross-origin links need a higher score |
+| 7 | `framework_probe` | `/v3/api-docs`, `/openapi/v1.json`, `/swagger/v1/swagger.json`, `/v2/api-docs`, at the origin root and under at most one prefix taken from the target's own path |
+
+Explicit evidence (catalogue, typed links, configuration on pages already fetched) is always followed. The origin's own
+pages and the framework probes run **only when nothing has been accepted yet**: they are guesses and cost requests. Cross-origin
+links are followed through the same protected fetcher (private addresses refused, redirects re-checked); the connection is kept
+in the trail and **a link alone is never provenance or applicability** (see policy changes). The requested method is only a
+matching hint: discovery issues GET requests for documentation and metadata and never calls the target endpoint. Pages and
+fetched assets are untrusted data and are parsed, never executed.
+
+`NavigationLimits` (defaults): 8 pages/scripts/configurations, depth 3 for pages (contracts, scripts and configuration may be one
+hop further), 6 links per page, 80 leads, 20 catalogue entries, 4 catalogues, 2 initializers per page, 256 KiB per script or
+configuration file, 2 probe contexts. `FetchLimits` gained `max_hosts` (6 distinct host:port pairs) and `reference_reserve` (default a
+quarter of `max_requests`): navigation, configuration fetching and model-chosen links all share the request, byte, time and host
+budget, and the reserve can be spent only by reference capture. `FetchLimits.deep()` is the research proposal (60 requests, 120 s).
+
+### Viewer configuration (`viewer_config.py`)
+
+Static only; nothing is executed. Read: Swagger UI `url`, `urls`, `configUrl` and embedded `spec` (inline in a script, or in the
+JSON a `configUrl` serves, for example springdoc's), `Redoc.init('...')`, `<redoc spec-url>`, linked initializer files **by file
+name** (`swagger-initializer.js`, `swagger-ui-init.js`, `redoc-init.js`, ...; never bundles, presets or app chunks), and RequireJS
+`data-main` scripts that name apiDoc's `api_data` / `api_project` modules. Relative URLs inside a script or configuration resolve
+against the **page that loads them**, as a browser does, and RequireJS module ids against the `data-main` script's directory. An
+embedded specification is captured with its containing source as the candidate's source URL. A configuration computed at runtime
+(for example Petstore's initializer, whose URL depends on `window.location`) is reported as `unsupported_dynamic_configuration`
+with a code per reason; it is never guessed. apiDoc data files are recognised from the script's references and **not downloaded**.
+
+### Honest reporting (optional, backward-compatible `DiscoveryOutcome` fields)
+
+Statuses are unchanged (`validated`, `ambiguous`, `rejected`, `inaccessible`, `not_found`). New optional detail:
+
+- `artifacts` (`ArtifactFinding`): `unsupported_description` (Swagger 2.0, Google Discovery, Smithy, AsyncAPI), `documentation_only`
+  (apiDoc, Postman collection), `authentication_required` (401/403 with the status), `unsupported_dynamic_configuration`. A
+  recognised unsupported description is also a rejected candidate (validation code `unsupported_format`, or `unsupported_version` for
+  Swagger 2.0 and OpenAPI outside 3.0/3.1), so the outcome is `rejected`, not `not_found`. Documentation-only data alone is
+  `not_found` with a note. None of these means no contract exists.
+- `trail` (`LeadRecord`): every navigation step with parent, mechanism, kind, depth and outcome.
+- `coverage` (`Coverage`): `complete`, `limits_reached` (`navigation_limit`, `request_limit`, `host_limit`, `deadline_exceeded`,
+  `total_size_limit`, `depth_limit`, `page_limit`, `lead_limit`, `catalog_entry_limit`, `catalog_limit`), leads examined and
+  unexamined (the first few listed), requests used against the limit, the reserve, and hosts contacted. An accepted contract and an
+  incomplete search are reported separately and can both be true.
+
+`serialization.py`, the CLI (`--trail`, `--deep`, `--docs-url`) and the owner samples under `docs/examples/discovery-outcomes/` show
+all of them. Sixteen generated samples are drift-guarded by a test.
+
+### Language-model fallback changes
+
+The model now chooses **identifiers of links it was shown** (`{"choices": ["L3"]}`); it never supplies a URL. Its input is the page
+title, up to six headings, up to 30 links (specification links first, then the best navigation links, each with an identifier and
+including links that may lead toward a specification indirectly, such as "Integration guide"), and configuration snippets. A
+chosen link becomes a lead in the navigation queue (`llm_suggestion`), fetched under the shared limits and judged like any other;
+a chosen page can lead on to further links within the depth limit. A reply naming a URL instead is still accepted only if the URL is
+a real link target or quoted configuration on the page (a URL in a link label does not count). Unknown identifiers, context lines and
+snippets cannot be chosen. A model choice is never evidence of identity and carries no confidence value. The existing call, token and
+spending limits and the ledger apply unchanged; automated tests use scripted model replies only.
+
+### Policy and behavior changes to review
+
+- **Provenance**: a contract linked from a page on a host related to the target, but hosted elsewhere, is now `indeterminate`
+  (the connection is recorded), no longer `match`. Applicability still comes from the contract's declared servers, operation, version
+  and product.
+- Each discovery makes one extra request for the catalogue probe, even when a contract is found at once.
+- The model sees more links than before (promising navigation links, headings), so a page costs more input tokens than the old
+  specification-only view. The 16,000-character prompt cap is unchanged.
+- A model-chosen link that is an HTML page is navigated, not rejected as a bad contract.
+
+### Interface additions
+
+`FetchResult.link_header`; `FetchLimits.max_hosts`, `reference_reserve`, `deep()`; `DiscoveryBudget.reference_phase()`,
+`navigation_remaining()`; `domain.discovery.ArtifactFinding`, `LeadRecord`, `Coverage` and the optional `DiscoveryOutcome.artifacts`,
+`trail`, `coverage`; validation rejection code `unsupported_format`; evidence criterion `navigation_path`; new `discovery_method` values
+(table above); modules `links`, `catalog`, `formats`, `viewer_config`, `link_scoring`, `navigation`.
+
+### Verification and what it does not show
+
+Deterministic fixtures on real local servers cover each scenario in the brief (homepage to cross-origin documentation, framework
+location under a context path, Swagger initializer to configuration to version alternatives, a catalogue with loops and unrelated
+entries, an apiDoc site, wrong provider / unsupported format / authentication / timeout / budget exhaustion, and a scripted model
+following an observed link while invented URLs and page instructions are refused). Breaking each key rule on purpose (explore gate,
+initializer filter, host limit, reserve, depth, de-duplication, link headers, catalogue relevance, identifier checks, resolution base)
+makes tests fail. The existing reference-capture, JSON/YAML equivalence, version ambiguity and CLI behavior tests are unchanged and
+pass. This is a count of mechanisms exercised, not a measure of coverage of real providers: no recall or precision has been measured.
+
+Optional live smoke test (network-dependent; not part of the test suite, results will change as sites change):
+
+```sh
+python -m radar.discovery https://www.fruityvice.com/api/fruit/apple --method GET --docs-url https://www.fruityvice.com/doc/index.html --trail
+python -m radar.discovery https://petstore.swagger.io --docs-url https://petstore.swagger.io/ --trail
+python -m radar.discovery api.stripe.com && python -m radar.discovery api.github.com --deep
+python -m radar.discovery.llm_input https://docs.example.com/api      # what a model would be shown; free
+```
+On 2026-10-10 the first reported documentation-only apiDoc data and no contract; the second reported an unsupported dynamic Swagger
+configuration (the Petstore initializer computes its URL at runtime); Stripe, `api.weather.gov` and GitHub behaved as before.
+
+### Known limitations and deferred follow-up gaps
+
+Not implemented: general GitHub repository crawling, a configured web-search service, browser automation, APIs.json / `llms.txt` /
+sitemap reading, adapters for apiDoc, Google Discovery, Smithy, GraphQL, gRPC, MCP, OData or WSDL, inferred or LLM-generated contracts,
+storage of source bindings, and frontend changes. Static viewer reading does not follow variables, `window.location` logic,
+query-string configuration or external configuration other than a literal `configUrl`; only file-name-matched initializers and
+RequireJS entry scripts are fetched. Navigation keyword scoring is fixed and English-only. Probes use fixed names and at most one
+path prefix. Structural validation is still not the official OpenAPI JSON Schema. A bounded search cannot prove that no contract exists.
+
 ## Issue #9 status and resume plan
 
 Done and tested (fixtures only; live provider checks were manual): input normalization,

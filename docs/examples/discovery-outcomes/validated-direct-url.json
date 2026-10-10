@@ -120,11 +120,24 @@
       }
     ],
     "limitations": [
-      "Discovery is bounded: it tried provider mappings, common specification locations and links in documentation pages, within fixed request, time and size limits.",
+      "Discovery is bounded: it tried provider mappings, common specification locations, documentation pages and links, and configuration they point to, within fixed request, time, size and host limits.",
       "The contract was requested directly by its URL, so no other locations were searched.",
       "Structural validation only; the document was not checked against the official OpenAPI JSON Schema.",
       "Matching applies explicit rules to the contract text and its origin; it does not prove identity.",
       "Only $ref references are followed; operationRef, discriminator.mapping and externalValue targets are not captured."
-    ]
+    ],
+    "artifacts": [],
+    "trail": [],
+    "coverage": {
+      "complete": true,
+      "limits_reached": [],
+      "leads_examined": 0,
+      "leads_unexamined": 0,
+      "unexamined": [],
+      "requests_used": 1,
+      "requests_limit": 20,
+      "reserved_for_references": 5,
+      "hosts_contacted": []
+    }
   }
 }

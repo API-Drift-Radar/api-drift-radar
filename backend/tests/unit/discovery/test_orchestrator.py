@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
+from radar.discovery.limits import BudgetExceeded
 from radar.discovery.fetch import FetchAttempt, FetchFailure, FetchResult
 from radar.discovery.input import DiscoveryInputError
 from radar.discovery.limits import DiscoveryBudget, FetchLimits
@@ -35,7 +36,10 @@ class Network:
         self.calls.append(url)
         if budget.requests_used >= budget.limits.max_requests:
             return FetchResult(url, url, None, None, None, None, (), FetchFailure('request_limit', 'budget'))
-        budget.claim_request()
+        try:
+            budget.claim_request()
+        except BudgetExceeded as error:  # as the real fetcher does: a refused request is a failed fetch
+            return FetchResult(url, url, None, None, None, None, (), FetchFailure(error.code, 'limit'))
         value = self.files.get(url, ('status', 404))
         if isinstance(value, tuple) and value[0] == 'status':
             return FetchResult(url, url, value[1], None, None, None, (FetchAttempt(url, value[1]),),

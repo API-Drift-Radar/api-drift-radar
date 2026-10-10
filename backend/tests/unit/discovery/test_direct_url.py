@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from radar.discovery.candidates import looks_like_spec_url, search_direct_url
+from radar.discovery.limits import BudgetExceeded
 from radar.discovery.fetch import FetchAttempt, FetchFailure, FetchResult
 from radar.discovery.input import normalize_target
 from radar.discovery.limits import DiscoveryBudget
@@ -58,7 +59,10 @@ def test_a_spec_url_is_fetched_exactly_once_including_its_query():
 
     def fetch(url, budget, **options):
         seen.append(url)
-        budget.claim_request()
+        try:
+            budget.claim_request()
+        except BudgetExceeded as error:  # as the real fetcher does: a refused request is a failed fetch
+            return FetchResult(url, url, None, None, None, None, (), FetchFailure(error.code, 'limit'))
         return result_for(url)
 
     cache = {}
@@ -117,7 +121,10 @@ class Network:
 
     def fetch(self, url, budget, **options):
         self.calls.append(url)
-        budget.claim_request()
+        try:
+            budget.claim_request()
+        except BudgetExceeded as error:  # as the real fetcher does: a refused request is a failed fetch
+            return FetchResult(url, url, None, None, None, None, (), FetchFailure(error.code, 'limit'))
         value = self.files.get(url, ('status', 404))
         if isinstance(value, tuple) and value[0] == 'fail':
             return FetchResult(url, url, None, None, None, None, (), FetchFailure(value[1], 'test failure'))
@@ -189,7 +196,7 @@ def test_a_direct_contract_that_contradicts_a_hint_is_rejected_then_the_search_c
 
 def test_a_bare_host_does_no_direct_fetch():
     outcome, network = run({}, 'https://api.acme.com')
-    assert 'direct_url' not in {a.stage for a in outcome.attempts} and API + '/' not in network.calls
+    assert 'direct_url' not in {a.stage for a in outcome.attempts}  # navigation may fetch the origin root; the direct strategy must not
 
 
 def test_direct_discovery_is_deterministic():

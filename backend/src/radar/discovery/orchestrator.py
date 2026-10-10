@@ -1,10 +1,12 @@
 """Run discovery end to end and report one explicit outcome.
 
-Strategies run in a fixed order under ONE shared budget and one fetch cache: provider
-mappings, common locations, then official-documentation links. All of them run, so an
-ambiguity in a later strategy is not hidden by an earlier hit. Every retrieved document is
-judged on its own (validation, matching, reference capture); this module only combines the
-verdicts. It never picks between valid contracts and never uses an LLM.
+Strategies run in a fixed order under ONE shared budget (requests, bytes, time, hosts) and one fetch cache:
+an explicit specification URL, provider mappings, common locations, documentation pages, then bounded
+navigation (typed links, an RFC 9727 catalogue, viewer configuration and, when nothing has been accepted yet,
+the origin's own pages and framework probes), and finally, if enabled, a language model choosing among links it
+was shown. All of them run, so an ambiguity in a later strategy is not hidden by an earlier hit. Every
+retrieved document is judged on its own (validation, matching, reference capture); this module only combines
+the verdicts. It never picks between valid contracts, and a model never decides acceptance.
 """
 
 from dataclasses import replace
@@ -13,27 +15,34 @@ from radar.discovery.candidates import search_common_locations, search_direct_ur
 from radar.discovery.documentation import search_documentation
 from radar.discovery.evaluation import evaluate_candidate, package_fingerprint
 from radar.discovery.fetch import FetchResult
+from radar.discovery.formats import recognize_artifact
 from radar.discovery.input import normalize_target
-from radar.discovery.limits import DiscoveryBudget, FetchLimits
+from radar.discovery.limits import BUDGET_STOP_CODES, DiscoveryBudget, FetchLimits
 from radar.discovery.llm_cost import CostLedger
 from radar.discovery.llm_fallback import search_llm_fallback
+from radar.discovery.llm_input import reduce_page
+from radar.discovery.navigation import Navigator, NavigationLimits
 from radar.discovery.providers import search_provider_mappings
 from radar.domain.discovery import (
-    DiscoveryAttempt, DiscoveryOutcome, DiscoveryRequest, DiscoveryStatus, MatchingEvidence,
+    ArtifactFinding, Coverage, DiscoveryAttempt, DiscoveryOutcome, DiscoveryRequest, DiscoveryStatus, LeadRecord,
+    MatchingEvidence,
 )
 
 
-BUDGET_CODES = frozenset({'request_limit', 'deadline_exceeded', 'total_size_limit'})
-# What a catch-all web server returns for a guessed path, or an API endpoint whose path merely ends in
-# .json. For a guessed location or a spec-looking target this is a clean miss, not a rejected contract; for a location a provider or documentation page named
-# explicitly, the same response is a real rejection.
+BUDGET_CODES = BUDGET_STOP_CODES
+# What a catch-all web server returns for a guessed path, or an API endpoint whose path merely ends in .json.
+# For a guessed location (a common location, a framework probe) or a spec-looking target this is a clean miss,
+# not a rejected contract; for a location a provider, a link or a configuration named explicitly, the same
+# response is a real rejection.
 NON_SPEC_CODES = frozenset({'html_document', 'empty_document', 'not_json_or_yaml', 'not_an_object', 'not_openapi'})
-BOUNDED = ('Discovery is bounded: it tried provider mappings, common specification locations and '
-           'links in documentation pages, within fixed request, time and size limits.')
+GUESSED_METHODS = frozenset({'common_location', 'direct_url', 'framework_probe'})
+BOUNDED = ('Discovery is bounded: it tried provider mappings, common specification locations, documentation '
+           'pages and links, and configuration they point to, within fixed request, time, size and host limits.')
 NOT_PROOF = 'Failing to find a contract is not proof that none is published.'
+MAX_UNEXAMINED_SHOWN = 10
 
 
-def _attempt(stage, fetch: FetchResult, documentation_link=False):
+def _attempt(stage, fetch: FetchResult, ignorable_blocks=False):
     """(DiscoveryAttempt, category) where category is one of ok, not_found, inaccessible, budget, ignored."""
     if fetch.ok:
         return DiscoveryAttempt(fetch.requested_url, stage, 'retrieved'), 'ok'
@@ -44,7 +53,7 @@ def _attempt(stage, fetch: FetchResult, documentation_link=False):
         category, outcome = 'not_found', 'not_found'
     elif code == 'invalid_url':
         category, outcome = 'ignored', 'invalid_url'
-    elif code == 'blocked_destination' and documentation_link:
+    elif code == 'blocked_destination' and ignorable_blocks:
         category, outcome = 'ignored', 'blocked'  # a link on an untrusted page pointed at a private address
     else:
         category, outcome = 'inaccessible', 'inaccessible'
@@ -60,7 +69,7 @@ def _mapping_for(retrieved, mappings):
 
 def _is_non_spec(candidate_method, evaluation):
     rejection = evaluation.rejection
-    return (candidate_method in {'common_location', 'direct_url'} and rejection is not None
+    return (candidate_method in GUESSED_METHODS and rejection is not None
             and rejection.stage == 'validation' and rejection.code in NON_SPEC_CODES)
 
 
@@ -75,7 +84,8 @@ def _llm_note(fallback, ledger, pages):
     text = (f'Language-model fallback: {len(made)} call(s), {tokens_in} input / {tokens_out} output tokens, '
             f'${fallback.usd:.6f} this run; ledger total ${total["total_usd"]:.6f}'
             f'{" of $" + format(total["budget_usd"], ".2f") if "budget_usd" in total else ""}. '
-            'Suggested links were fetched and validated like any other candidate; the model certified nothing.')
+            'The model chose among links it was shown; they were fetched and judged like any other lead, and '
+            'the model certified nothing.')
     if refused:
         text += f' A call was refused by the budget rules ({refused[0].detail}).'
     return text
@@ -89,6 +99,7 @@ def discover(
     registry_path=None,
     documentation_urls=None,
     documentation_limits=None,
+    navigation_limits: NavigationLimits | None = None,
     validation_limits=None,
     capture_limits=None,
     allow_loopback: bool = False,
@@ -100,13 +111,17 @@ def discover(
     Outcomes: validated (exactly one distinct complete contract fits), ambiguous (several do,
     all returned in `packages`; use `select_candidate`), rejected (documents were found but
     none passed), inaccessible (nothing passed and some source could not be reached) or
-    not_found (nothing passed and every source answered with a clean miss). Raises
-    DiscoveryInputError for a request that cannot be interpreted.
+    not_found (nothing passed and every source answered with a clean miss, or only documentation data was
+    found). Optional details on the outcome: `artifacts` (unsupported descriptions, documentation-only data,
+    authentication barriers, unsupported dynamic configuration), `trail` (each navigation step with its parent
+    and mechanism) and `coverage` (which limits cut the search short). Raises DiscoveryInputError for a
+    request that cannot be interpreted.
 
     `llm_suggester` (default None: off) enables the language-model fallback, used only when nothing valid was
     found otherwise; `llm_ledger` is the cost ledger enforcing its budget (an in-memory one with default
-    limits if omitted). The model may suggest documentation links; every suggestion is fetched and judged
-    like any other candidate.
+    limits if omitted). The model chooses among links it was shown; they are fetched and judged like any other
+    lead. The request's method is only a matching hint: discovery issues GET requests for documentation and
+    metadata and never performs the named operation.
     """
     target = normalize_target(request)
     budget = budget or DiscoveryBudget(limits)
@@ -117,21 +132,36 @@ def discover(
     stops, skipped = [], []
     llm_note = None
     accepted, rejected = {}, []
+    artifacts, judged, trail = [], set(), []
+    logged = {'nav': 0, 'artifacts': 0}
 
-    def record(stage, searched, extra=(), documentation_link=False):
+    def record(stage, searched, extra=(), ignorable_blocks=False):
         for fetch in extra:
             attempt, category = _attempt(f'{stage}_page', fetch)
             attempts.append(attempt)
             counts[category] = counts.get(category, 0) + 1
+            barrier(fetch, stage)
         for fetch in searched.fetches:
-            attempt, category = _attempt(stage, fetch, documentation_link)
+            attempt, category = _attempt(stage, fetch, ignorable_blocks)
             attempts.append(attempt)
             counts[category] = counts.get(category, 0) + 1
+            barrier(fetch, stage)
         if searched.stop_reason:
             stops.append(f'{stage}: {searched.stop_reason}')
         skipped.extend(searched.skipped_urls)
 
+    def barrier(fetch, mechanism):
+        if not fetch.ok and fetch.status in (401, 403):
+            artifacts.append(ArtifactFinding(
+                'authentication_required', 'authentication', fetch.requested_url,
+                f'The source answered HTTP {fetch.status}; whether a contract exists behind it is unknown.',
+                mechanism, None, fetch.status))
+
     def judge(retrieved, mapping):
+        marker = (retrieved.retrieval.final_url, retrieved.candidate.discovery_method, retrieved.candidate.discovery_source)
+        if marker in judged:  # the same document reached by the same route twice (for example via two strategies)
+            return
+        judged.add(marker)
         evaluation = evaluate_candidate(retrieved, target, budget, mapping=mapping, validation_limits=validation_limits,
                                         capture_limits=capture_limits, allow_loopback=allow_loopback)
         if evaluation.accepted:
@@ -152,6 +182,12 @@ def discover(
                                              f'{evaluation.rejection.code}: {evaluation.rejection.reason}'))
             counts['not_found'] += 1
             return
+        rejection = evaluation.rejection
+        if rejection.stage == 'validation' and rejection.code in ('unsupported_version', 'unsupported_format'):
+            info = recognize_artifact(retrieved.retrieval.content)
+            artifacts.append(ArtifactFinding(
+                'unsupported_description', info.kind if info else 'openapi_unsupported_version', retrieved.retrieval.final_url,
+                rejection.reason, method, retrieved.candidate.discovery_source))
         rejected.append(evaluation)
 
     # A URL that names a specification file is tried first. If it is a valid, matching contract it is the
@@ -161,6 +197,7 @@ def discover(
     for retrieved in direct.candidates:
         judge(retrieved, None)
     requested_directly = bool(accepted)
+    navigator = None
 
     if not requested_directly:
         providers = search_provider_mappings(request, budget, registry_path=registry_path, **options)
@@ -169,26 +206,53 @@ def discover(
                                     limits=documentation_limits, **options)
         record('provider_mapping', providers.search)
         record('common_location', common)
-        record('documentation', docs.search, extra=docs.documents, documentation_link=True)
+        record('documentation', docs.search, extra=docs.documents, ignorable_blocks=True)
         ordered = [(r, _mapping_for(r, providers.mappings)) for r in providers.search.candidates]
         ordered += [(r, None) for r in common.candidates]
         ordered += [(r, None) for r in docs.search.candidates]
         for retrieved, mapping in ordered:
             judge(retrieved, mapping)
+
+        # Navigation always follows explicit evidence (typed links, the catalogue, viewer configuration on pages
+        # already fetched); the origin's own pages and framework-convention probes only when nothing is accepted.
+        untrusted = {n.url for n in docs.notes if n.code == 'unconfigured_documentation_origin'}
+        seed_pages = [d for d in docs.documents if d.ok and d.final_url not in untrusted]
+        navigator = Navigator(request, budget, limits=navigation_limits, allow_loopback=allow_loopback, cache=cache,
+                              explore=not accepted)
+
+        def run_navigation():
+            navigator.run()
+            result = navigator.result()
+            for mechanism, fetch in result.fetch_log[logged['nav']:]:
+                attempt, category = _attempt(f'navigation:{mechanism}', fetch, ignorable_blocks=True)
+                attempts.append(attempt)
+                counts[category] = counts.get(category, 0) + 1
+            logged['nav'] = len(result.fetch_log)
+            for retrieved in navigator.take_candidates():
+                judge(retrieved, None)
+            return result
+
+        navigator.seed(seed_pages)
+        navigation = run_navigation()
+
         if not accepted and llm_suggester is not None:
-            untrusted = {n.url for n in docs.notes if n.code == 'unconfigured_documentation_origin'}
-            pages = [d for d in docs.documents if d.ok and d.final_url not in untrusted]
             ledger = llm_ledger or CostLedger()
-            fallback = search_llm_fallback(request, budget, pages, llm_suggester, ledger,
-                                           allow_loopback=allow_loopback, cache=cache)
+            pages = sorted((p.fetch for p in navigation.pages),
+                           key=lambda f: -sum(1 for i in reduce_page(f).items if i.id))
+            fallback = search_llm_fallback(request, pages, llm_suggester, ledger, depth_of=navigator.depth_of)
             for call in fallback.calls:
                 detail = call.detail + '; ' if call.detail else ''
-                attempts.append(DiscoveryAttempt(call.page_url, 'llm_fallback', call.outcome,
-                                                 f'{detail}${call.usd:.6f}'))
-            record('llm_fallback', fallback.search)
-            for retrieved in fallback.search.candidates:
-                judge(retrieved, None)
+                attempts.append(DiscoveryAttempt(call.page_url, 'llm_fallback', call.outcome, f'{detail}${call.usd:.6f}'))
+            navigator.add_leads(fallback.leads)
+            navigation = run_navigation()
             llm_note = _llm_note(fallback, ledger, pages)
+
+        artifacts.extend(navigation.artifacts)
+        trail.extend(navigation.trail)
+        nav_limits = list(navigation.limits_reached)
+        unexamined = list(navigation.unexamined)
+    else:
+        nav_limits, unexamined = [], []
 
     packages = tuple(e.package for e in accepted.values())
     candidates = tuple(p.candidate for p in packages) + tuple(e.candidate for e in rejected)
@@ -201,9 +265,22 @@ def discover(
     if oversized:
         notes.append(f'{len(oversized)} document(s) were refused for exceeding the per-document size limit '
                      f'(first: {oversized[0]}). Raise FetchLimits.max_document_bytes if a larger contract is expected.')
-    if stops or skipped:
-        notes.append('The search was cut short by its limits (' + ', '.join(stops or ['unvisited locations']) + '); '
-                     f'{len(skipped)} location(s) were not visited, so other contracts may exist.')
+    reached = list(dict.fromkeys([s.split(': ', 1)[-1] for s in stops] + nav_limits))
+    if stops or skipped or nav_limits or unexamined:
+        notes.append('The search was cut short by its limits (' + ', '.join(reached or ['unvisited locations']) + '); '
+                     f'{len(skipped) + len(unexamined)} location(s) were not visited, so other contracts may exist.')
+    findings = tuple(dict.fromkeys(artifacts))
+    documentation = {}
+    for finding in findings:
+        if finding.category == 'documentation_only':
+            documentation.setdefault(finding.kind, []).append(finding.url)
+        elif finding.category == 'authentication_required':
+            notes.append(f'{finding.url} requires authentication (HTTP {finding.status}); what it serves is unknown.')
+        elif finding.category == 'unsupported_dynamic_configuration':
+            notes.append(f'A documentation viewer at {finding.url} could not be read statically ({finding.detail}).')
+    for kind, urls in documentation.items():
+        notes.append(f'Published documentation data ({kind}) was found ({len(urls)} file(s), first: {urls[0]}), but it is '
+                     'not an OpenAPI contract and no supported contract was accepted from it.')
 
     if len(packages) == 1:
         status, package = DiscoveryStatus.VALIDATED, packages[0]
@@ -223,7 +300,15 @@ def discover(
     else:
         status, package = DiscoveryStatus.NOT_FOUND, None
         notes.append(NOT_PROOF)
-    return DiscoveryOutcome(status, candidates, tuple(attempts), tuple(dict.fromkeys(notes)), package, packages)
+
+    fetched = sum(1 for r in trail if r.outcome in ('fetched', 'failed'))  # every lead actually looked at
+    coverage = Coverage(
+        complete=not (stops or skipped or nav_limits or unexamined), limits_reached=tuple(reached), leads_examined=fetched,
+        leads_unexamined=len(unexamined) + len(skipped), unexamined=tuple(unexamined[:MAX_UNEXAMINED_SHOWN]),
+        requests_used=budget.requests_used, requests_limit=budget.limits.max_requests,
+        reserved_for_references=budget.limits.reserve, hosts_contacted=tuple(sorted(budget.hosts)))
+    return DiscoveryOutcome(status, candidates, tuple(attempts), tuple(dict.fromkeys(notes)), package, packages,
+                            findings, tuple(trail), coverage)
 
 
 def select_candidate(outcome: DiscoveryOutcome, source_url: str) -> DiscoveryOutcome:
@@ -240,5 +325,6 @@ def select_candidate(outcome: DiscoveryOutcome, source_url: str) -> DiscoveryOut
         if source_url in urls:
             note = f'Selected explicitly from {len(outcome.packages)} alternatives: {package.candidate.source_url}.'
             return DiscoveryOutcome(DiscoveryStatus.VALIDATED, outcome.candidates, outcome.attempts,
-                                    (*outcome.limitations, note), package)
+                                    (*outcome.limitations, note), package, (), outcome.artifacts, outcome.trail,
+                                    outcome.coverage)
     raise ValueError('The selected URL is not one of the alternatives.')

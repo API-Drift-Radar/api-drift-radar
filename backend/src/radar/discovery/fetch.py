@@ -43,6 +43,7 @@ class FetchResult:
     attempts: tuple[FetchAttempt, ...]
     failure: FetchFailure | None = None
     retry_after: str | None = None
+    link_header: str | None = None  # the raw HTTP Link header of a successful response (RFC 8288), if any
 
     @property
     def ok(self):
@@ -140,7 +141,7 @@ def fetch_document(url: str, budget: DiscoveryBudget, *, allow_loopback=False,
             status = content_type = retry_after = None
             current = normalize_target(DiscoveryRequest(current)).normalized_url
             parsed = urlsplit(current)
-            budget.claim_request()
+            budget.claim_request(f"{parsed.hostname}:{parsed.port or (443 if parsed.scheme == 'https' else 80)}")
             attempts.append(FetchAttempt(current, None))
             answer = _checked_address(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80),
                                       min(budget.limits.connect_timeout, budget.remaining()), allow_loopback)
@@ -224,8 +225,10 @@ def fetch_document(url: str, budget: DiscoveryBudget, *, allow_loopback=False,
                     chunks.append(chunk)
                 if expected is not None and size != expected:
                     raise _FetchError("incomplete_response", "Response ended before Content-Length bytes arrived.")
+                link = response.getheader("Link")
                 return FetchResult(url, current, status, content_type, b"".join(chunks),
-                                   datetime.now(timezone.utc), tuple(attempts))
+                                   datetime.now(timezone.utc), tuple(attempts),
+                                   link_header=link[:8192] if link else None)
             finally:
                 if timer is not None:
                     timer.cancel()

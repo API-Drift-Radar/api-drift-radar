@@ -83,6 +83,52 @@ class ValidatedContractPackage:
 
 
 @dataclass(frozen=True)
+class ArtifactFinding:
+    """Something discovery found or hit that is not a supported contract, described structurally.
+
+    category is `unsupported_description` (a formal description we do not support, e.g. Swagger 2.0),
+    `documentation_only` (documentation data or a collection, e.g. apiDoc), `authentication_required` (a
+    source answered 401/403: its contents are unknown) or `unsupported_dynamic_configuration` (a documentation
+    viewer whose configuration cannot be read statically).
+    """
+
+    category: str
+    kind: str
+    url: str
+    detail: str
+    discovery_method: str | None = None
+    parent_url: str | None = None
+    status: int | None = None
+
+
+@dataclass(frozen=True)
+class LeadRecord:
+    """One step of the search: where it was found, how, and what became of it."""
+
+    url: str
+    parent_url: str | None
+    mechanism: str
+    kind: str
+    depth: int
+    outcome: str  # fetched, failed, not_examined, skipped_depth, skipped_limit
+
+
+@dataclass(frozen=True)
+class Coverage:
+    """How much of the bounded search was completed. `complete` is False when a limit cut it short."""
+
+    complete: bool = True
+    limits_reached: tuple[str, ...] = ()
+    leads_examined: int = 0
+    leads_unexamined: int = 0
+    unexamined: tuple[LeadRecord, ...] = ()  # the first few leads left unexamined
+    requests_used: int = 0
+    requests_limit: int = 0
+    reserved_for_references: int = 0
+    hosts_contacted: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class DiscoveryOutcome:
     status: DiscoveryStatus
     candidates: tuple[ContractCandidate, ...] = ()
@@ -90,6 +136,9 @@ class DiscoveryOutcome:
     limitations: tuple[str, ...] = ()
     package: ValidatedContractPackage | None = None
     packages: tuple[ValidatedContractPackage, ...] = ()  # the accepted alternatives of an ambiguous outcome
+    artifacts: tuple[ArtifactFinding, ...] = ()  # optional detail: unsupported or documentation-only findings, barriers
+    trail: tuple[LeadRecord, ...] = ()  # optional detail: the navigation steps, each with its parent and mechanism
+    coverage: Coverage | None = None  # optional detail: how complete the bounded search was
 
     def __post_init__(self):
         if not isinstance(self.status, DiscoveryStatus):

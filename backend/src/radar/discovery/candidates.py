@@ -9,7 +9,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from radar.discovery.fetch import FetchResult, fetch_document
 from radar.discovery.input import normalize_target
-from radar.discovery.limits import BudgetExceeded, DiscoveryBudget
+from radar.discovery.limits import BUDGET_STOP_CODES, BudgetExceeded, DiscoveryBudget
 from radar.domain.discovery import ContractCandidate, DiscoveryRequest, NormalizedTarget
 
 
@@ -71,6 +71,22 @@ def search_common_locations(
                             limitations=SEARCH_LIMITATIONS, cache=cache)
 
 
+def fetch_cached(url, budget, *, cache, allow_loopback=False, document_byte_limit=None) -> FetchResult:
+    """The one place a discovery strategy fetches a URL: through the shared cache and budget.
+
+    A cached result costs no budget. Results that only reflect an exhausted budget are never cached, so a later
+    run with budget left can try again. `document_byte_limit` raises the size cap for this URL only.
+    """
+    cache_key = (url, document_byte_limit)
+    result = cache.get(cache_key)
+    if result is None:
+        extra = {'document_byte_limit': document_byte_limit} if document_byte_limit is not None else {}
+        result = fetch_document(url, budget, allow_loopback=allow_loopback, **extra)
+        if result.ok or result.failure.code not in BUDGET_STOP_CODES:
+            cache[cache_key] = result
+    return result
+
+
 def fetch_candidates(target, locations, budget, *, allow_loopback=False, limitations=(),
                      document_limits=None, cache=None):
     """Fetch each distinct source URL once, retaining every provenance record.
@@ -101,6 +117,8 @@ def fetch_candidates(target, locations, budget, *, allow_loopback=False, limitat
                 stop_reason = error.code
             if stop_reason is None and budget.requests_used >= budget.limits.max_requests:
                 stop_reason = "request_limit"
+            if stop_reason is None and budget.navigation_exhausted():
+                stop_reason = "navigation_limit"
             if stop_reason is None and budget.bytes_used >= budget.limits.max_total_bytes:
                 stop_reason = "total_size_limit"
             if stop_reason is not None:
@@ -109,7 +127,7 @@ def fetch_candidates(target, locations, budget, *, allow_loopback=False, limitat
 
             extra = {'document_byte_limit': document_limits[url]} if url in document_limits else {}
             result = fetch_document(url, budget, allow_loopback=allow_loopback, **extra)
-            if result.ok or result.failure.code not in {"request_limit", "deadline_exceeded", "total_size_limit"}:
+            if result.ok or result.failure.code not in BUDGET_STOP_CODES:
                 cache[cache_key] = result
         fetches.append(result)
         if result.ok:
@@ -118,7 +136,7 @@ def fetch_candidates(target, locations, budget, *, allow_loopback=False, limitat
                     candidate=replace(candidate, source_url=result.final_url),
                     retrieval=result,
                 ))
-        elif result.failure.code in {"request_limit", "deadline_exceeded", "total_size_limit"}:
+        elif result.failure.code in BUDGET_STOP_CODES:
             stop_reason = result.failure.code
             skipped = urls[index + 1:]
             break

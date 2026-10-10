@@ -1,76 +1,67 @@
 {
-  "description": "A multi-file contract: the root plus the two files it depends on, each listed with size and SHA-256.",
+  "description": "Found through an RFC 9727 catalogue. The trail records each step with its parent and mechanism; an unrelated catalogue entry is skipped and recorded.",
   "request": {
     "target": "api.acme.com"
   },
   "outcome": {
     "status": "validated",
     "package": {
-      "source_url": "https://api.acme.com/openapi.json",
-      "discovery_method": "common_location",
-      "discovery_source": "https://api.acme.com/openapi.json",
-      "content_fingerprint": "eb6435b81d02c6c3e1a4ad46f3a85671247adcf1ee0cd117282855e2f4523993",
+      "source_url": "https://api.acme.com/specs/pets.json",
+      "discovery_method": "api_catalog",
+      "discovery_source": "https://api.acme.com/.well-known/api-catalog",
+      "content_fingerprint": "9630265182fe73a77886245b2835ebc542bb655c3a97de29a9ab26253b7730d2",
       "openapi_version": "3.0.3",
       "title": "Acme Pets API",
       "info_version": "1.0.0",
       "server_urls": [
         "https://api.acme.com/v1"
       ],
-      "path_count": 1,
-      "operation_count": 1,
+      "path_count": 2,
+      "operation_count": 4,
       "root_document": {
-        "url": "https://api.acme.com/openapi.json",
+        "url": "https://api.acme.com/specs/pets.json",
         "media_type": "application/json",
-        "size_bytes": 511,
-        "sha256": "6a8b20cb81d4b3d4cf1a8bad6241d574c1471fad8e959a0d208353ffaa58d5de",
+        "size_bytes": 301,
+        "sha256": "9a1779068d473c91eb667bbc68a34f031ee172351f95aa4e408c83648a9d16b5",
         "retrieved_at": "2026-10-09T12:00:00Z"
       },
-      "referenced_documents": [
-        {
-          "url": "https://api.acme.com/schemas/pet.json",
-          "media_type": "application/json",
-          "size_bytes": 120,
-          "sha256": "036a47ad51f31c530a54ff10e54e2a0482fcd620f9cc45c84712cfbdb922b837",
-          "retrieved_at": "2026-10-09T12:00:00Z"
-        },
-        {
-          "url": "https://api.acme.com/schemas/owner.json",
-          "media_type": "application/json",
-          "size_bytes": 88,
-          "sha256": "a3d32cc14adfae1b09f961f9b5b3493e7edbdb39e23123ea9966e44955a86e7a",
-          "retrieved_at": "2026-10-09T12:00:00Z"
-        }
-      ],
+      "referenced_documents": [],
       "evidence": [
+        {
+          "criterion": "navigation_path",
+          "outcome": null,
+          "description": "well_known_api_catalog api.acme.com/.well-known/api-catalog → api_catalog api.acme.com/specs/pets.json",
+          "source_url": "https://api.acme.com/.well-known/api-catalog"
+        },
         {
           "criterion": "server_host",
           "outcome": "match",
           "description": "Server 'https://api.acme.com/v1' declares api.acme.com, the same host as the target host api.acme.com.",
-          "source_url": "https://api.acme.com/openapi.json"
+          "source_url": "https://api.acme.com/specs/pets.json"
         },
         {
           "criterion": "operation",
           "outcome": "not_requested",
           "description": "No endpoint path or method was given.",
-          "source_url": "https://api.acme.com/openapi.json"
+          "source_url": "https://api.acme.com/specs/pets.json"
         },
         {
           "criterion": "api_version",
           "outcome": "not_requested",
           "description": "No API version was requested.",
-          "source_url": "https://api.acme.com/openapi.json"
+          "source_url": "https://api.acme.com/specs/pets.json"
         },
         {
           "criterion": "product",
           "outcome": "not_requested",
           "description": "No product was requested.",
-          "source_url": "https://api.acme.com/openapi.json"
+          "source_url": "https://api.acme.com/specs/pets.json"
         },
         {
           "criterion": "provenance",
           "outcome": "match",
           "description": "The contract is served from api.acme.com, the same host as the target host api.acme.com.",
-          "source_url": "https://api.acme.com/openapi.json"
+          "source_url": "https://api.acme.com/specs/pets.json"
         }
       ],
       "limitations": [
@@ -82,41 +73,47 @@
     "alternatives": [],
     "candidates": [
       {
-        "source_url": "https://api.acme.com/openapi.json",
-        "discovery_method": "common_location",
-        "discovery_source": "https://api.acme.com/openapi.json",
+        "source_url": "https://api.acme.com/specs/pets.json",
+        "discovery_method": "api_catalog",
+        "discovery_source": "https://api.acme.com/.well-known/api-catalog",
         "accepted": true,
         "rejections": [],
         "evidence": [
           {
+            "criterion": "navigation_path",
+            "outcome": null,
+            "description": "well_known_api_catalog api.acme.com/.well-known/api-catalog → api_catalog api.acme.com/specs/pets.json",
+            "source_url": "https://api.acme.com/.well-known/api-catalog"
+          },
+          {
             "criterion": "server_host",
             "outcome": "match",
             "description": "Server 'https://api.acme.com/v1' declares api.acme.com, the same host as the target host api.acme.com.",
-            "source_url": "https://api.acme.com/openapi.json"
+            "source_url": "https://api.acme.com/specs/pets.json"
           },
           {
             "criterion": "operation",
             "outcome": "not_requested",
             "description": "No endpoint path or method was given.",
-            "source_url": "https://api.acme.com/openapi.json"
+            "source_url": "https://api.acme.com/specs/pets.json"
           },
           {
             "criterion": "api_version",
             "outcome": "not_requested",
             "description": "No API version was requested.",
-            "source_url": "https://api.acme.com/openapi.json"
+            "source_url": "https://api.acme.com/specs/pets.json"
           },
           {
             "criterion": "product",
             "outcome": "not_requested",
             "description": "No product was requested.",
-            "source_url": "https://api.acme.com/openapi.json"
+            "source_url": "https://api.acme.com/specs/pets.json"
           },
           {
             "criterion": "provenance",
             "outcome": "match",
             "description": "The contract is served from api.acme.com, the same host as the target host api.acme.com.",
-            "source_url": "https://api.acme.com/openapi.json"
+            "source_url": "https://api.acme.com/specs/pets.json"
           }
         ],
         "limitations": [
@@ -130,8 +127,8 @@
       {
         "url": "https://api.acme.com/openapi.json",
         "stage": "common_location",
-        "outcome": "retrieved",
-        "reason": null
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
       },
       {
         "url": "https://api.acme.com/openapi.yaml",
@@ -160,6 +157,42 @@
       {
         "url": "https://api.acme.com/.well-known/api-catalog",
         "stage": "navigation:well_known_api_catalog",
+        "outcome": "retrieved",
+        "reason": null
+      },
+      {
+        "url": "https://api.acme.com/specs/pets.json",
+        "stage": "navigation:api_catalog",
+        "outcome": "retrieved",
+        "reason": null
+      },
+      {
+        "url": "https://api.acme.com/",
+        "stage": "navigation:origin_root",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/v3/api-docs",
+        "stage": "navigation:framework_probe",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/openapi/v1.json",
+        "stage": "navigation:framework_probe",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/swagger/v1/swagger.json",
+        "stage": "navigation:framework_probe",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/v2/api-docs",
+        "stage": "navigation:framework_probe",
         "outcome": "not_found",
         "reason": "http_error: HTTP status 404."
       }
@@ -178,16 +211,72 @@
         "mechanism": "well_known_api_catalog",
         "kind": "catalog",
         "depth": 0,
+        "outcome": "fetched"
+      },
+      {
+        "url": "https://unrelated.example/api",
+        "parent_url": "https://api.acme.com/.well-known/api-catalog",
+        "mechanism": "catalog_entry",
+        "kind": "catalog_entry",
+        "depth": 1,
+        "outcome": "skipped_unrelated"
+      },
+      {
+        "url": "https://api.acme.com/specs/pets.json",
+        "parent_url": "https://api.acme.com/.well-known/api-catalog",
+        "mechanism": "api_catalog",
+        "kind": "description",
+        "depth": 1,
+        "outcome": "fetched"
+      },
+      {
+        "url": "https://api.acme.com/",
+        "parent_url": null,
+        "mechanism": "origin_root",
+        "kind": "page",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/v3/api-docs",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/openapi/v1.json",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/swagger/v1/swagger.json",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/v2/api-docs",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
         "outcome": "failed"
       }
     ],
     "coverage": {
       "complete": true,
       "limits_reached": [],
-      "leads_examined": 1,
+      "leads_examined": 7,
       "leads_unexamined": 0,
       "unexamined": [],
-      "requests_used": 8,
+      "requests_used": 12,
       "requests_limit": 20,
       "reserved_for_references": 5,
       "hosts_contacted": []

@@ -1,5 +1,5 @@
 {
-  "description": "Nothing qualified and a source answered with an error, so a contract may exist behind it.",
+  "description": "A conventional description location answered 401. Whether a contract exists behind it is unknown.",
   "request": {
     "target": "api.acme.com"
   },
@@ -12,8 +12,8 @@
       {
         "url": "https://api.acme.com/openapi.json",
         "stage": "common_location",
-        "outcome": "inaccessible",
-        "reason": "http_error: HTTP status 503."
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
       },
       {
         "url": "https://api.acme.com/openapi.yaml",
@@ -24,8 +24,8 @@
       {
         "url": "https://api.acme.com/swagger.json",
         "stage": "common_location",
-        "outcome": "inaccessible",
-        "reason": "http_error: HTTP status 403."
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
       },
       {
         "url": "https://api.acme.com/docs",
@@ -54,8 +54,8 @@
       {
         "url": "https://api.acme.com/v3/api-docs",
         "stage": "navigation:framework_probe",
-        "outcome": "not_found",
-        "reason": "http_error: HTTP status 404."
+        "outcome": "inaccessible",
+        "reason": "http_error: HTTP status 401."
       },
       {
         "url": "https://api.acme.com/openapi/v1.json",
@@ -78,18 +78,18 @@
     ],
     "limitations": [
       "Discovery is bounded: it tried provider mappings, common specification locations, documentation pages and links, and configuration they point to, within fixed request, time, size and host limits.",
-      "https://api.acme.com/swagger.json requires authentication (HTTP 403); what it serves is unknown.",
+      "https://api.acme.com/v3/api-docs requires authentication (HTTP 401); what it serves is unknown.",
       "Some sources could not be reached, so a contract may exist behind them. Failing to find a contract is not proof that none is published."
     ],
     "artifacts": [
       {
         "category": "authentication_required",
         "kind": "authentication",
-        "url": "https://api.acme.com/swagger.json",
-        "detail": "The source answered HTTP 403; whether a contract exists behind it is unknown.",
-        "discovery_method": "common_location",
+        "url": "https://api.acme.com/v3/api-docs",
+        "detail": "The source answered HTTP 401; whether a contract exists behind it is unknown.",
+        "discovery_method": "framework_probe",
         "parent_url": null,
-        "status": 403
+        "status": 401
       }
     ],
     "trail": [

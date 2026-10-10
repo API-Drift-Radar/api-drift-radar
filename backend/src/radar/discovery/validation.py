@@ -17,6 +17,8 @@ from typing import Any, Mapping
 
 import yaml
 
+from radar.discovery.formats import UNSUPPORTED_DESCRIPTION, identify_description
+
 
 STAGE = 'validation'
 SUPPORTED_VERSIONS = '3.0.x and 3.1.x'
@@ -319,6 +321,10 @@ def _check_openapi(document, nodes):
         if 'swagger' in document:
             raise _Rejected('unsupported_version',
                             f'Swagger/OpenAPI 2.x is not supported; supported versions are {SUPPORTED_VERSIONS}.', '/swagger')
+        recognised = identify_description(document)
+        if recognised is not None and recognised.category == UNSUPPORTED_DESCRIPTION:
+            raise _Rejected('unsupported_format', f'{recognised.label} is a recognised description format that is not '
+                            f'supported; supported versions are OpenAPI {SUPPORTED_VERSIONS}.')
         raise _Rejected('not_openapi', 'The object has no "openapi" field, so it is not an OpenAPI document.')
     version = document['openapi']
     if not isinstance(version, str) or not _VERSION_SHAPE.fullmatch(version):

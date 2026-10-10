@@ -401,7 +401,9 @@ def check_product(target: NormalizedTarget, summary: ContractSummary, document: 
 # --- provenance and decision -------------------------------------------------
 
 STAGE = 'matching'
-DOCUMENTATION_METHODS = frozenset({'documentation_link', 'swagger_ui_config', 'redoc_config', 'spec_url_attribute'})
+DOCUMENTATION_METHODS = frozenset({
+    'documentation_link', 'swagger_ui_config', 'redoc_config', 'spec_url_attribute', 'service_desc_link', 'api_catalog',
+    'swagger_config_url', 'swagger_config_url_entry', 'embedded_spec', 'documentation_navigation', 'llm_suggestion'})
 REJECTION_CODES = {'server_host': 'server_host_mismatch', 'operation': 'operation_not_found',
                    'api_version': 'version_mismatch', 'product': 'product_mismatch'}
 GENERAL_LIMITATION = 'Matching applies explicit rules to the contract text and its origin; it does not prove identity.'
@@ -461,9 +463,11 @@ def check_provenance(context: MatchContext) -> MatchCheck:
                             f'the target host {_text(target)}.')
     page = _host(context.discovery_source)
     if context.discovery_method in DOCUMENTATION_METHODS and page and hosts_related(target, page):
-        return check(MATCH, f'The contract is linked from the documentation page {_text(context.discovery_source)} '
-                            f'on {_text(page)}, which is related to the target host, but is hosted at '
-                            f'{_text(served_from)}.')
+        # A link alone does not establish that the provider published the contract or that it applies to the
+        # target, so this is recorded as a connection, not as positive provenance.
+        return check(INDETERMINATE, f'The contract is linked from {_text(context.discovery_source)} on {_text(page)}, '
+                                    f'which is related to the target host, but it is hosted at {_text(served_from)}. '
+                                    'A link alone does not establish ownership or applicability; the connection is recorded.')
     return check(INDETERMINATE, f'The contract is hosted at {_text(served_from)} and was found by '
                                 f'{_text(context.discovery_method, 40)}, which does not establish that it belongs '
                                 f'to {_text(target)}.')

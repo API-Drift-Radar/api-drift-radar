@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 
 from radar.discovery.fetch import fetch_document
 from radar.discovery.input import DiscoveryInputError, normalize_target
-from radar.discovery.limits import DiscoveryBudget
+from radar.discovery.limits import BUDGET_STOP_CODES, DiscoveryBudget
 from radar.discovery.references import (
     STAGE, ExternalUse, ReferenceLimits, json_pointer, resolve_pointer, scan_references,
 )
@@ -27,7 +27,7 @@ from radar.discovery.validation import ValidationLimits, ValidationRejection, pa
 from radar.domain.discovery import CapturedDocument, DiscoveryRequest
 
 
-BUDGET_CODES = {'request_limit', 'deadline_exceeded', 'total_size_limit'}
+BUDGET_CODES = BUDGET_STOP_CODES
 
 
 @dataclass(frozen=True)
@@ -155,8 +155,9 @@ class _Capture:
                                  limitations=tuple(self.limitations))
         self.queue.extend((use, self.root_url, 1, False) for use in scan.external)
         try:
-            while self.queue:
-                self.process(*self.queue.popleft())
+            with self.budget.reference_phase():  # the reference reserve is spendable here and only here
+                while self.queue:
+                    self.process(*self.queue.popleft())
         except _Stop as stopped:
             return CaptureResult(
                 rejection=ValidationRejection(stopped.code, stopped.reason, stopped.location, STAGE),

@@ -13,7 +13,9 @@ from unittest.mock import patch
 
 import pytest
 
+from radar.discovery.limits import BudgetExceeded
 from radar.discovery.fetch import FetchAttempt, FetchFailure, FetchResult
+from radar.discovery.limits import FetchLimits
 from radar.discovery.orchestrator import discover, select_candidate
 from radar.discovery.serialization import outcome_to_dict, rejection_from_text
 from radar.domain.discovery import DiscoveryRequest
@@ -39,17 +41,25 @@ class Network:
         self.files = {k if '://' in k else HOST + k: v for k, v in files.items()}
 
     def fetch(self, url, budget, **options):
-        budget.claim_request()
+        try:
+            budget.claim_request()
+        except BudgetExceeded as error:  # as the real fetcher does: a refused request is a failed fetch
+            return FetchResult(url, url, None, None, None, None, (), FetchFailure(error.code, 'limit'))
         value = self.files.get(url, ('status', 404))
         if isinstance(value, tuple) and value[0] == 'status':
             return FetchResult(url, url, value[1], None, None, None, (FetchAttempt(url, value[1]),),
                                FetchFailure('http_error', f'HTTP status {value[1]}.'))
-        media, content = ('text/html', value[1].encode()) if isinstance(value, tuple) else ('application/json', body(value))
+        if isinstance(value, tuple) and value[0] == 'js':
+            media, content = 'application/javascript', value[1].encode()
+        elif isinstance(value, tuple):
+            media, content = 'text/html', value[1].encode()
+        else:
+            media, content = 'application/json', body(value)
         return FetchResult(url, url, 200, media, content, RETRIEVED, (FetchAttempt(url, 200),))
 
 
-def run(files, target='api.acme.com', registry=None, tmp_path=None, **hints):
-    options = {}
+def run(files, target='api.acme.com', registry=None, tmp_path=None, discover_options=None, **hints):
+    options = dict(discover_options or {})
     if registry:
         path = tmp_path / 'providers.json'
         path.write_text(json.dumps({'schema_version': 1, 'providers': registry}))
@@ -73,6 +83,22 @@ OWNER = {'type': 'object', 'properties': {'name': {'type': 'string'}}}
 SPEC_V1, SPEC_V2 = 'https://specs.acme.com/2022-11-28.json', 'https://specs.acme.com/2026-03-10.json'
 TWO_VERSIONS = [mapping('acme-2022-11-28', SPEC_V1, '2022-11-28'), mapping('acme-2026-03-10', SPEC_V2, '2026-03-10')]
 TWO_FILES = {SPEC_V1: contract(), SPEC_V2: contract(paths={'/pets': {'get': {}}, '/owners': {'get': {}}})}
+
+
+SWAGGER_SITE = {
+    '/docs': ('html', '<script src="/docs/swagger-initializer.js"></script>'),
+    '/docs/swagger-initializer.js': ('js', 'SwaggerUIBundle({configUrl: "/docs/swagger-config"})'),
+    '/docs/swagger-config': {'urls': [{'url': '/v1/openapi.json', 'name': 'v1'}, {'url': '/v2/openapi.json', 'name': 'v2'}]},
+    '/v1/openapi.json': contract(server=HOST + '/v1'),
+    '/v2/openapi.json': contract(server=HOST + '/v2', paths={'/pets': {'get': {}}, '/owners': {'get': {}}}),
+}
+APIDOC_SITE = {
+    '/doc/index.html': ('html', '<script src="vendor/require.min.js" data-main="main.js"></script>'),
+    '/doc/main.js': ('js', "require(['./api_project.js', './api_data.js'], function () {});"),
+}
+GOOGLE_DISCOVERY = {'kind': 'discovery#restDescription', 'name': 'pets', 'version': 'v1', 'resources': {}}
+CATALOGUE = {'linkset': [{'anchor': HOST + '/v1', 'service-desc': [{'href': '/specs/pets.json', 'type': 'application/openapi+json'}]},
+                         {'anchor': 'https://unrelated.example/api', 'service-desc': [{'href': 'https://unrelated.example/s.json'}]}]}
 
 
 def scenarios(tmp_path):
@@ -116,6 +142,31 @@ def scenarios(tmp_path):
            run({'/openapi.json': contract(server='https://api.other.test/v1'), '/swagger.json': SWAGGER2,
                 '/openapi.yaml': contract(paths={'/pets': {'get': {'x': {'$ref': 'gone.json'}}}})},
                'https://api.acme.com/v1/pets', method='GET'))
+    yield ('validated-via-api-catalog',
+           'Found through an RFC 9727 catalogue. The trail records each step with its parent and mechanism; an '
+           'unrelated catalogue entry is skipped and recorded.',
+           request('api.acme.com'), run({'/.well-known/api-catalog': CATALOGUE, '/specs/pets.json': contract()}))
+    yield ('ambiguous-swagger-config-versions',
+           'A Swagger UI initializer points at a configuration file listing two versions. Both are alternatives.',
+           request('api.acme.com'), run(SWAGGER_SITE))
+    yield ('not-found-apidoc-documentation-only',
+           'Documentation data (apiDoc) was found but it is not an OpenAPI contract: documentation only, nothing '
+           'accepted. Not proof that no contract exists.',
+           request('https://api.acme.com/api/fruit/apple', method='GET'),
+           run(APIDOC_SITE, 'https://api.acme.com/api/fruit/apple', method='GET',
+               discover_options={'documentation_urls': [HOST + '/doc/index.html']}))
+    yield ('rejected-unsupported-format',
+           'A formal description was found in a format Radar recognises but does not support (Google Discovery). '
+           'It is reported as such, not as a malformed OpenAPI file.',
+           request('api.acme.com'), run({'/openapi.json': GOOGLE_DISCOVERY}))
+    yield ('inaccessible-authentication-required',
+           'A conventional description location answered 401. Whether a contract exists behind it is unknown.',
+           request('api.acme.com'), run({'/v3/api-docs': ('status', 401)}))
+    yield ('not-found-search-cut-short',
+           'The search ran out of its navigation budget. `coverage` says which limit and what was left unexamined.',
+           request('api.acme.com'),
+           run({'/': ('html', ''.join(f'<a href="/developers/{i}">Developer documentation {i}</a>' for i in range(6)))},
+               discover_options={'limits': FetchLimits(max_requests=12)}))
     yield ('inaccessible',
            'Nothing qualified and a source answered with an error, so a contract may exist behind it.',
            request('api.acme.com'), run({'/openapi.json': ('status', 503), '/swagger.json': ('status', 403)}))
@@ -221,3 +272,48 @@ def test_selection_keeps_the_candidates_and_notes_the_choice(rendered):
 ])
 def test_rejection_text_parsing(text, expected):
     assert rejection_from_text(text) == expected
+
+
+def test_the_optional_details_are_present_and_shaped_for_clients(rendered):
+    for name, sample in rendered.items():
+        outcome = sample['outcome']
+        assert set(outcome) >= {'artifacts', 'trail', 'coverage'}, name
+        assert isinstance(outcome['artifacts'], list) and isinstance(outcome['trail'], list), name
+        c = outcome['coverage']
+        assert set(c) == {'complete', 'limits_reached', 'leads_examined', 'leads_unexamined', 'unexamined', 'requests_used',
+                          'requests_limit', 'reserved_for_references', 'hosts_contacted'}, name
+        assert all(set(step) == {'url', 'parent_url', 'mechanism', 'kind', 'depth', 'outcome'} for step in outcome['trail'])
+        assert all(set(a) == {'category', 'kind', 'url', 'detail', 'discovery_method', 'parent_url', 'status'}
+                   for a in outcome['artifacts'])
+
+
+def test_apidoc_is_documentation_only_and_never_a_package(rendered):
+    outcome = rendered['not-found-apidoc-documentation-only']['outcome']
+    assert outcome['status'] == 'not_found' and outcome['package'] is None and outcome['alternatives'] == []
+    assert {a['kind'] for a in outcome['artifacts']} == {'apidoc'} and {a['category'] for a in outcome['artifacts']} == {'documentation_only'}
+
+
+def test_unsupported_format_and_authentication_barriers_are_structured(rendered):
+    google = rendered['rejected-unsupported-format']['outcome']
+    assert google['status'] == 'rejected' and [(a['category'], a['kind']) for a in google['artifacts']] == [
+        ('unsupported_description', 'google_discovery')]
+    assert google['candidates'][0]['rejections'][0]['code'] == 'unsupported_format'
+    barrier = rendered['inaccessible-authentication-required']['outcome']
+    assert barrier['status'] == 'inaccessible' and [(a['category'], a['status']) for a in barrier['artifacts']] == [
+        ('authentication_required', 401)]
+
+
+def test_a_cut_short_search_says_which_limit_and_what_was_left(rendered):
+    coverage = rendered['not-found-search-cut-short']['outcome']['coverage']
+    assert coverage['complete'] is False and 'navigation_limit' in coverage['limits_reached']
+    assert coverage['leads_unexamined'] > 0 and coverage['unexamined'] and coverage['reserved_for_references'] == 3
+    complete = rendered['validated-common-location']['outcome']['coverage']
+    assert complete['complete'] is True and complete['limits_reached'] == []
+
+
+def test_the_catalogue_sample_shows_each_step_and_the_skipped_unrelated_entry(rendered):
+    outcome = rendered['validated-via-api-catalog']['outcome']
+    steps = {(s['mechanism'], s['outcome']) for s in outcome['trail']}
+    assert ('well_known_api_catalog', 'fetched') in steps and ('api_catalog', 'fetched') in steps
+    assert ('catalog_entry', 'skipped_unrelated') in steps
+    assert outcome['package']['discovery_method'] == 'api_catalog'

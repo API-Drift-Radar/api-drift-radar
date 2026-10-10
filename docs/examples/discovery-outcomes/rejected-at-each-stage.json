@@ -153,11 +153,178 @@
         "stage": "documentation_page",
         "outcome": "not_found",
         "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/.well-known/api-catalog",
+        "stage": "navigation:well_known_api_catalog",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/",
+        "stage": "navigation:origin_root",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/v3/api-docs",
+        "stage": "navigation:framework_probe",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/v1/v3/api-docs",
+        "stage": "navigation:framework_probe",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/openapi/v1.json",
+        "stage": "navigation:framework_probe",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/v1/openapi/v1.json",
+        "stage": "navigation:framework_probe",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/swagger/v1/swagger.json",
+        "stage": "navigation:framework_probe",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/v1/swagger/v1/swagger.json",
+        "stage": "navigation:framework_probe",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/v2/api-docs",
+        "stage": "navigation:framework_probe",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/v1/v2/api-docs",
+        "stage": "navigation:framework_probe",
+        "outcome": "budget_exhausted",
+        "reason": "navigation_limit: limit"
       }
     ],
     "limitations": [
-      "Discovery is bounded: it tried provider mappings, common specification locations and links in documentation pages, within fixed request, time and size limits.",
+      "Discovery is bounded: it tried provider mappings, common specification locations, documentation pages and links, and configuration they point to, within fixed request, time, size and host limits.",
+      "The search was cut short by its limits (navigation_limit); 0 location(s) were not visited, so other contracts may exist.",
       "Documents were found but none passed validation, matching and reference capture; see each candidate's rejection reasons."
-    ]
+    ],
+    "artifacts": [
+      {
+        "category": "unsupported_description",
+        "kind": "swagger_2",
+        "url": "https://api.acme.com/swagger.json",
+        "detail": "Swagger/OpenAPI 2.x is not supported; supported versions are 3.0.x and 3.1.x.",
+        "discovery_method": "common_location",
+        "parent_url": "https://api.acme.com/swagger.json",
+        "status": null
+      }
+    ],
+    "trail": [
+      {
+        "url": "https://api.acme.com/.well-known/api-catalog",
+        "parent_url": null,
+        "mechanism": "well_known_api_catalog",
+        "kind": "catalog",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/",
+        "parent_url": null,
+        "mechanism": "origin_root",
+        "kind": "page",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/v3/api-docs",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/v1/v3/api-docs",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/openapi/v1.json",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/v1/openapi/v1.json",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/swagger/v1/swagger.json",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/v1/swagger/v1/swagger.json",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/v2/api-docs",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/v1/v2/api-docs",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "failed"
+      }
+    ],
+    "coverage": {
+      "complete": false,
+      "limits_reached": [
+        "navigation_limit"
+      ],
+      "leads_examined": 10,
+      "leads_unexamined": 0,
+      "unexamined": [],
+      "requests_used": 15,
+      "requests_limit": 20,
+      "reserved_for_references": 5,
+      "hosts_contacted": []
+    }
   }
 }

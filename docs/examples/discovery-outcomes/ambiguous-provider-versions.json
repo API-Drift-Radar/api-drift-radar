@@ -282,11 +282,39 @@
         "stage": "documentation_page",
         "outcome": "not_found",
         "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/.well-known/api-catalog",
+        "stage": "navigation:well_known_api_catalog",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
       }
     ],
     "limitations": [
-      "Discovery is bounded: it tried provider mappings, common specification locations and links in documentation pages, within fixed request, time and size limits.",
+      "Discovery is bounded: it tried provider mappings, common specification locations, documentation pages and links, and configuration they point to, within fixed request, time, size and host limits.",
       "2 distinct contracts fit the request; none was chosen. Supply more context (an operation, API version or product) or select one explicitly."
-    ]
+    ],
+    "artifacts": [],
+    "trail": [
+      {
+        "url": "https://api.acme.com/.well-known/api-catalog",
+        "parent_url": null,
+        "mechanism": "well_known_api_catalog",
+        "kind": "catalog",
+        "depth": 0,
+        "outcome": "failed"
+      }
+    ],
+    "coverage": {
+      "complete": true,
+      "limits_reached": [],
+      "leads_examined": 1,
+      "leads_unexamined": 0,
+      "unexamined": [],
+      "requests_used": 8,
+      "requests_limit": 20,
+      "reserved_for_references": 5,
+      "hosts_contacted": []
+    }
   }
 }

@@ -5,6 +5,7 @@
     python -m radar.discovery api.github.com --json
     python -m radar.discovery https://example.com --llm          # needs MERGE_API_KEY; spends from the ledger
     python -m radar.discovery api.example.com --docs-url https://docs.example.com/api --llm
+    python -m radar.discovery api.example.com --deep --trail      # a larger budget, and every navigation step
     python -m radar.discovery.llm_input https://docs.example.com/api   # what the model step would see; free
 
 Exit status: 0 validated, 1 any other outcome, 2 unusable input.
@@ -24,7 +25,7 @@ from radar.domain.discovery import DiscoveryRequest, DiscoveryStatus
 MARK = {'match': '+', 'mismatch': 'x', 'indeterminate': '?', 'not_requested': '-', None: ' '}
 
 
-def _print(outcome):
+def _print(outcome, show_trail=False):
     print(f'STATUS: {outcome.status.value.upper()}')
     if outcome.package:
         p = outcome.package
@@ -46,9 +47,24 @@ def _print(outcome):
             print(f'    {c.source_url}  (via {c.discovery_method})')
             for reason in c.rejection_reasons:
                 print(f'      - {reason}')
+    if outcome.artifacts:
+        print('  found besides a contract:')
+        for f in outcome.artifacts:
+            where = f'  (via {f.discovery_method}' + (f' from {f.parent_url}' if f.parent_url else '') + ')' if f.discovery_method else ''
+            print(f'    [{f.category}] {f.kind}: {f.url}{where}')
+            print(f'      {f.detail}')
     print('  attempts:')
     for a in outcome.attempts:
-        print(f'    {a.stage:18} {a.outcome:16} {a.url}' + (f'   [{a.reason}]' if a.reason else ''))
+        print(f'    {a.stage:34} {a.outcome:16} {a.url}' + (f'   [{a.reason}]' if a.reason else ''))
+    if show_trail and outcome.trail:
+        print('  navigation trail (url <- parent, mechanism, outcome):')
+        for step in outcome.trail:
+            print(f'    {"  " * step.depth}{step.url}  <- {step.parent_url or "start"}  [{step.mechanism}, {step.kind}, {step.outcome}]')
+    c = outcome.coverage
+    if c is not None:
+        state = 'complete within its limits' if c.complete else 'CUT SHORT by ' + ', '.join(c.limits_reached or ['limits'])
+        print(f'  coverage: {state}; {c.requests_used}/{c.requests_limit} requests ({c.reserved_for_references} reserved for references), '
+              f'{len(c.hosts_contacted)} host(s), {c.leads_unexamined} lead(s) unexamined')
     print('  notes:')
     for note in outcome.limitations:
         print(f'    * {note}')
@@ -69,16 +85,22 @@ def main(argv=None) -> int:
     parser.add_argument('--max-requests', type=int, default=None)
     parser.add_argument('--max-document-mb', type=float, default=None, help='per-document size limit (default 5)')
     parser.add_argument('--allow-loopback', action='store_true', help='allow localhost targets (for local testing)')
+    parser.add_argument('--deep', action='store_true', help='a larger budget for a deliberate deeper search (60 requests, 120 s)')
+    parser.add_argument('--trail', action='store_true', help='also show every navigation step with its parent and mechanism')
     parser.add_argument('--json', action='store_true', help='print the machine-readable result instead')
     args = parser.parse_args(argv)
 
     kwargs = {}
     limits = {}
+    if args.deep:
+        limits.update(max_requests=60, discovery_timeout=120.0)
     if args.max_requests:
         limits['max_requests'] = args.max_requests
     if args.max_document_mb:
         limits['max_document_bytes'] = int(args.max_document_mb * 1024 * 1024)
         limits['max_total_bytes'] = max(FetchLimits().max_total_bytes, limits['max_document_bytes'] * 2)
+    if limits.get('max_requests') and limits.get('max_requests') < 4:
+        limits['reference_reserve'] = 0
     try:
         if limits:
             kwargs['limits'] = FetchLimits(**limits)
@@ -103,7 +125,7 @@ def main(argv=None) -> int:
     if args.json:
         print(json.dumps(outcome_to_dict(outcome), indent=2))
     else:
-        _print(outcome)
+        _print(outcome, args.trail)
     return 0 if outcome.status is DiscoveryStatus.VALIDATED else 1
 
 

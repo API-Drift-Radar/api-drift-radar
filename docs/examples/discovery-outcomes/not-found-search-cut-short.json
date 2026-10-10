@@ -1,0 +1,248 @@
+{
+  "description": "The search ran out of its navigation budget. `coverage` says which limit and what was left unexamined.",
+  "request": {
+    "target": "api.acme.com"
+  },
+  "outcome": {
+    "status": "not_found",
+    "package": null,
+    "alternatives": [],
+    "candidates": [],
+    "attempts": [
+      {
+        "url": "https://api.acme.com/openapi.json",
+        "stage": "common_location",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/openapi.yaml",
+        "stage": "common_location",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/swagger.json",
+        "stage": "common_location",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/docs",
+        "stage": "documentation_page",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/documentation",
+        "stage": "documentation_page",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/.well-known/api-catalog",
+        "stage": "navigation:well_known_api_catalog",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/",
+        "stage": "navigation:origin_root",
+        "outcome": "retrieved",
+        "reason": null
+      },
+      {
+        "url": "https://api.acme.com/developers/0",
+        "stage": "navigation:documentation_navigation",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/developers/1",
+        "stage": "navigation:documentation_navigation",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/developers/2",
+        "stage": "navigation:documentation_navigation",
+        "outcome": "budget_exhausted",
+        "reason": "navigation_limit: limit"
+      }
+    ],
+    "limitations": [
+      "Discovery is bounded: it tried provider mappings, common specification locations, documentation pages and links, and configuration they point to, within fixed request, time, size and host limits.",
+      "The search was cut short by its limits (navigation_limit); 7 location(s) were not visited, so other contracts may exist.",
+      "Failing to find a contract is not proof that none is published."
+    ],
+    "artifacts": [],
+    "trail": [
+      {
+        "url": "https://api.acme.com/.well-known/api-catalog",
+        "parent_url": null,
+        "mechanism": "well_known_api_catalog",
+        "kind": "catalog",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/",
+        "parent_url": null,
+        "mechanism": "origin_root",
+        "kind": "page",
+        "depth": 0,
+        "outcome": "fetched"
+      },
+      {
+        "url": "https://api.acme.com/developers/0",
+        "parent_url": "https://api.acme.com/",
+        "mechanism": "documentation_navigation",
+        "kind": "page",
+        "depth": 1,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/developers/1",
+        "parent_url": "https://api.acme.com/",
+        "mechanism": "documentation_navigation",
+        "kind": "page",
+        "depth": 1,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/developers/2",
+        "parent_url": "https://api.acme.com/",
+        "mechanism": "documentation_navigation",
+        "kind": "page",
+        "depth": 1,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://api.acme.com/developers/3",
+        "parent_url": "https://api.acme.com/",
+        "mechanism": "documentation_navigation",
+        "kind": "page",
+        "depth": 1,
+        "outcome": "not_examined"
+      },
+      {
+        "url": "https://api.acme.com/developers/4",
+        "parent_url": "https://api.acme.com/",
+        "mechanism": "documentation_navigation",
+        "kind": "page",
+        "depth": 1,
+        "outcome": "not_examined"
+      },
+      {
+        "url": "https://api.acme.com/developers/5",
+        "parent_url": "https://api.acme.com/",
+        "mechanism": "documentation_navigation",
+        "kind": "page",
+        "depth": 1,
+        "outcome": "not_examined"
+      },
+      {
+        "url": "https://api.acme.com/v3/api-docs",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "not_examined"
+      },
+      {
+        "url": "https://api.acme.com/openapi/v1.json",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "not_examined"
+      },
+      {
+        "url": "https://api.acme.com/swagger/v1/swagger.json",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "not_examined"
+      },
+      {
+        "url": "https://api.acme.com/v2/api-docs",
+        "parent_url": null,
+        "mechanism": "framework_probe",
+        "kind": "description",
+        "depth": 0,
+        "outcome": "not_examined"
+      }
+    ],
+    "coverage": {
+      "complete": false,
+      "limits_reached": [
+        "navigation_limit"
+      ],
+      "leads_examined": 5,
+      "leads_unexamined": 7,
+      "unexamined": [
+        {
+          "url": "https://api.acme.com/developers/3",
+          "parent_url": "https://api.acme.com/",
+          "mechanism": "documentation_navigation",
+          "kind": "page",
+          "depth": 1,
+          "outcome": "not_examined"
+        },
+        {
+          "url": "https://api.acme.com/developers/4",
+          "parent_url": "https://api.acme.com/",
+          "mechanism": "documentation_navigation",
+          "kind": "page",
+          "depth": 1,
+          "outcome": "not_examined"
+        },
+        {
+          "url": "https://api.acme.com/developers/5",
+          "parent_url": "https://api.acme.com/",
+          "mechanism": "documentation_navigation",
+          "kind": "page",
+          "depth": 1,
+          "outcome": "not_examined"
+        },
+        {
+          "url": "https://api.acme.com/v3/api-docs",
+          "parent_url": null,
+          "mechanism": "framework_probe",
+          "kind": "description",
+          "depth": 0,
+          "outcome": "not_examined"
+        },
+        {
+          "url": "https://api.acme.com/openapi/v1.json",
+          "parent_url": null,
+          "mechanism": "framework_probe",
+          "kind": "description",
+          "depth": 0,
+          "outcome": "not_examined"
+        },
+        {
+          "url": "https://api.acme.com/swagger/v1/swagger.json",
+          "parent_url": null,
+          "mechanism": "framework_probe",
+          "kind": "description",
+          "depth": 0,
+          "outcome": "not_examined"
+        },
+        {
+          "url": "https://api.acme.com/v2/api-docs",
+          "parent_url": null,
+          "mechanism": "framework_probe",
+          "kind": "description",
+          "depth": 0,
+          "outcome": "not_examined"
+        }
+      ],
+      "requests_used": 9,
+      "requests_limit": 12,
+      "reserved_for_references": 3,
+      "hosts_contacted": []
+    }
+  }
+}

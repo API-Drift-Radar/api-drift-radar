@@ -1,19 +1,37 @@
 {
-  "description": "Nothing qualified and a source answered with an error, so a contract may exist behind it.",
+  "description": "A formal description was found in a format Radar recognises but does not support (Google Discovery). It is reported as such, not as a malformed OpenAPI file.",
   "request": {
     "target": "api.acme.com"
   },
   "outcome": {
-    "status": "inaccessible",
+    "status": "rejected",
     "package": null,
     "alternatives": [],
-    "candidates": [],
+    "candidates": [
+      {
+        "source_url": "https://api.acme.com/openapi.json",
+        "discovery_method": "common_location",
+        "discovery_source": "https://api.acme.com/openapi.json",
+        "accepted": false,
+        "rejections": [
+          {
+            "stage": "validation",
+            "code": "unsupported_format",
+            "reason": "Google API Discovery document is a recognised description format that is not supported; supported versions are OpenAPI 3.0.x and 3.1.x."
+          }
+        ],
+        "evidence": [],
+        "limitations": [
+          "OpenAPI validity and relevance have not been assessed."
+        ]
+      }
+    ],
     "attempts": [
       {
         "url": "https://api.acme.com/openapi.json",
         "stage": "common_location",
-        "outcome": "inaccessible",
-        "reason": "http_error: HTTP status 503."
+        "outcome": "retrieved",
+        "reason": null
       },
       {
         "url": "https://api.acme.com/openapi.yaml",
@@ -24,8 +42,8 @@
       {
         "url": "https://api.acme.com/swagger.json",
         "stage": "common_location",
-        "outcome": "inaccessible",
-        "reason": "http_error: HTTP status 403."
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
       },
       {
         "url": "https://api.acme.com/docs",
@@ -78,18 +96,17 @@
     ],
     "limitations": [
       "Discovery is bounded: it tried provider mappings, common specification locations, documentation pages and links, and configuration they point to, within fixed request, time, size and host limits.",
-      "https://api.acme.com/swagger.json requires authentication (HTTP 403); what it serves is unknown.",
-      "Some sources could not be reached, so a contract may exist behind them. Failing to find a contract is not proof that none is published."
+      "Documents were found but none passed validation, matching and reference capture; see each candidate's rejection reasons."
     ],
     "artifacts": [
       {
-        "category": "authentication_required",
-        "kind": "authentication",
-        "url": "https://api.acme.com/swagger.json",
-        "detail": "The source answered HTTP 403; whether a contract exists behind it is unknown.",
+        "category": "unsupported_description",
+        "kind": "google_discovery",
+        "url": "https://api.acme.com/openapi.json",
+        "detail": "Google API Discovery document is a recognised description format that is not supported; supported versions are OpenAPI 3.0.x and 3.1.x.",
         "discovery_method": "common_location",
-        "parent_url": null,
-        "status": 403
+        "parent_url": "https://api.acme.com/openapi.json",
+        "status": null
       }
     ],
     "trail": [

@@ -13,7 +13,8 @@ import hashlib
 from radar.discovery.evaluation import package_fingerprint
 from radar.discovery.validation import HTTP_METHODS
 from radar.domain.discovery import (
-    CapturedDocument, ContractCandidate, DiscoveryOutcome, MatchingEvidence, ValidatedContractPackage,
+    ArtifactFinding, CapturedDocument, ContractCandidate, Coverage, DiscoveryOutcome, LeadRecord, MatchingEvidence,
+    ValidatedContractPackage,
 )
 
 
@@ -79,12 +80,40 @@ def package_to_dict(package: ValidatedContractPackage) -> dict:
     }
 
 
+def artifact_to_dict(finding: ArtifactFinding) -> dict:
+    """category: unsupported_description, documentation_only, authentication_required or
+    unsupported_dynamic_configuration. `kind` names the format or barrier (swagger_2, apidoc, google_discovery,
+    smithy, asyncapi, postman_collection, authentication, swagger_ui_configuration, ...)."""
+    return {'category': finding.category, 'kind': finding.kind, 'url': finding.url, 'detail': finding.detail,
+            'discovery_method': finding.discovery_method, 'parent_url': finding.parent_url, 'status': finding.status}
+
+
+def lead_to_dict(lead: LeadRecord) -> dict:
+    """One navigation step. outcome: fetched, failed, not_examined, skipped_depth, skipped_limit, skipped_unrelated."""
+    return {'url': lead.url, 'parent_url': lead.parent_url, 'mechanism': lead.mechanism, 'kind': lead.kind,
+            'depth': lead.depth, 'outcome': lead.outcome}
+
+
+def coverage_to_dict(coverage: Coverage | None) -> dict | None:
+    """How much of the bounded search was completed. `complete` is false when any limit cut it short."""
+    if coverage is None:
+        return None
+    return {'complete': coverage.complete, 'limits_reached': list(coverage.limits_reached),
+            'leads_examined': coverage.leads_examined, 'leads_unexamined': coverage.leads_unexamined,
+            'unexamined': [lead_to_dict(lead) for lead in coverage.unexamined],
+            'requests_used': coverage.requests_used, 'requests_limit': coverage.requests_limit,
+            'reserved_for_references': coverage.reserved_for_references, 'hosts_contacted': list(coverage.hosts_contacted)}
+
+
 def outcome_to_dict(outcome: DiscoveryOutcome) -> dict:
     """status is one of validated, ambiguous, rejected, inaccessible, not_found.
 
     `package` is set only when validated; `alternatives` only when ambiguous (resolve with an
     explicit choice, no re-fetch needed). `candidates` lists every evaluated document, accepted or
-    not; `attempts` every fetch and judgement; `limitations` the bounds and caveats that apply.
+    not; `attempts` every fetch and judgement; `limitations` the bounds and caveats that apply. The optional
+    `artifacts` (unsupported descriptions, documentation-only data, authentication barriers, unsupported dynamic
+    configuration), `trail` (navigation steps with parent and mechanism) and `coverage` (which limits cut the search
+    short) explain what was found besides a contract and how complete the search was.
     """
     return {
         'status': outcome.status.value,
@@ -94,4 +123,7 @@ def outcome_to_dict(outcome: DiscoveryOutcome) -> dict:
         'attempts': [{'url': a.url, 'stage': a.stage, 'outcome': a.outcome, 'reason': a.reason}
                      for a in outcome.attempts],
         'limitations': list(outcome.limitations),
+        'artifacts': [artifact_to_dict(a) for a in outcome.artifacts],
+        'trail': [lead_to_dict(lead) for lead in outcome.trail],
+        'coverage': coverage_to_dict(outcome.coverage),
     }

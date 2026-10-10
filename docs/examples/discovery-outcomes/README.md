@@ -16,9 +16,15 @@ and review the diff. Each file is `{ description, request, outcome }`.
 | `validated-with-referenced-documents.json` | validated | A multi-file contract; each referenced file listed with size and SHA-256 |
 | `validated-provider-version-selected.json` | validated | A version hint selected one of two provider versions; the other is a rejected candidate |
 | `ambiguous-two-contracts.json` | ambiguous | Two distinct contracts in `alternatives`; nothing chosen |
+| `ambiguous-swagger-config-versions.json` | ambiguous | A Swagger initializer led to a configuration listing two versions |
 | `ambiguous-provider-versions.json` | ambiguous | Dated provider versions with no version requested |
 | `ambiguous-resolved-by-selection.json` | validated | The same result after the user picked one alternative |
 | `rejected-at-each-stage.json` | rejected | Rejections at validation, matching and reference capture |
+| `validated-via-api-catalog.json` | validated | Found through an RFC 9727 catalogue; the `trail` shows each step, an unrelated entry skipped |
+| `not-found-apidoc-documentation-only.json` | not_found | apiDoc documentation data found: `artifacts` says documentation-only, no contract accepted |
+| `rejected-unsupported-format.json` | rejected | A Google Discovery description: recognised, unsupported, named in `artifacts` |
+| `inaccessible-authentication-required.json` | inaccessible | A location answered 401: an `authentication_required` artifact |
+| `not-found-search-cut-short.json` | not_found | The search hit its limits: `coverage` names them and what was left unexamined |
 | `inaccessible.json` | inaccessible | A source answered with an error; a contract may exist behind it |
 | `not-found.json` | not_found | Clean misses only; not proof that nothing is published |
 
@@ -44,4 +50,22 @@ and review the diff. Each file is `{ description, request, outcome }`.
 - `limitations`: plain-language caveats to show with the result: the search is bounded, the search was cut
   short, structural-only validation, and so on. `not_found` always says it is not proof of absence.
 
-Timestamps are ISO 8601 UTC. Nothing here involves an LLM.
+### Optional details (backward compatible additions)
+
+- `artifacts`: what discovery found or hit besides a contract. `category` is one of `unsupported_description` (a formal
+  description Radar recognises but does not support: Swagger 2.0, Google Discovery, Smithy, AsyncAPI), `documentation_only`
+  (documentation data or a collection, for example apiDoc), `authentication_required` (a source answered 401/403 so its
+  contents are unknown) or `unsupported_dynamic_configuration` (a documentation viewer whose configuration is computed at
+  runtime and cannot be read statically). `kind` names the format or barrier. None of these means no contract exists, and
+  none is a validated package.
+- `trail`: the navigation steps. Each has the `url`, the `parent_url` it was found on, the `mechanism` that produced it
+  (for example `origin_root`, `documentation_navigation`, `service_desc_link`, `api_catalog`, `swagger_config_url`,
+  `framework_probe`, `llm_suggestion`), its `kind`, `depth` and `outcome` (`fetched`, `failed`, `not_examined`,
+  `skipped_depth`, `skipped_limit`, `skipped_unrelated`). A link only creates a lead: it never establishes that a provider
+  published a contract or that it applies to the target.
+- `coverage`: how complete the bounded search was. `complete` is false when a limit cut it short; `limits_reached` names
+  them (`navigation_limit`, `request_limit`, `host_limit`, `deadline_exceeded`, `depth_limit`, `page_limit`, `lead_limit`,
+  ...); `unexamined` lists leads that were found but never looked at. Show this beside the result: an accepted contract and
+  an incomplete search can both be true, and an incomplete search is not evidence of absence.
+
+Timestamps are ISO 8601 UTC. Nothing here involves an LLM unless the optional fallback was enabled.
