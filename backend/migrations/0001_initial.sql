@@ -44,16 +44,17 @@ CREATE TABLE snapshots (
 );
 CREATE INDEX snapshots_by_source ON snapshots (source_id, captured_at);
 
--- Where each stored file of a snapshot came from. The bundle holds the bytes
--- under `path`; the URL and retrieval time belong to this capture.
+-- Where each document of a snapshot came from: one row per captured URL.
+-- The bundle holds the bytes under `path`; identical content captured from
+-- two URLs is stored once, so two rows may share a path.
 CREATE TABLE snapshot_documents (
     snapshot_id  TEXT NOT NULL REFERENCES snapshots(id),
-    path         TEXT NOT NULL,                    -- file path inside the bundle
     source_url   TEXT NOT NULL,
+    path         TEXT NOT NULL,                    -- file path inside the bundle
     retrieved_at TEXT NOT NULL,
     media_type   TEXT,
     is_root      INTEGER NOT NULL DEFAULT 0 CHECK (is_root IN (0, 1)),
-    PRIMARY KEY (snapshot_id, path)
+    PRIMARY KEY (snapshot_id, source_url)
 );
 CREATE UNIQUE INDEX snapshot_documents_one_root
     ON snapshot_documents (snapshot_id) WHERE is_root = 1;
@@ -105,6 +106,48 @@ CREATE TABLE changes (
     UNIQUE (check_run_id, ordinal)
 );
 CREATE INDEX changes_by_source ON changes (source_id);
+
+-- Integrity rules. Storage code follows them too; enforcing them here means
+-- no bug or manual edit can link records across sources or move a source's
+-- reference to something that is not its own valid snapshot.
+
+CREATE TRIGGER sources_identity BEFORE UPDATE OF id, locator, created_at ON sources
+BEGIN SELECT RAISE(ABORT, 'a source keeps its id, locator and creation time'); END;
+
+CREATE TRIGGER sources_latest_is_own_snapshot BEFORE UPDATE OF latest_snapshot_id ON sources
+WHEN NEW.latest_snapshot_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM snapshots WHERE id = NEW.latest_snapshot_id AND source_id = NEW.id)
+BEGIN SELECT RAISE(ABORT, 'latest snapshot must belong to the source'); END;
+
+CREATE TRIGGER sources_latest_never_cleared BEFORE UPDATE OF latest_snapshot_id ON sources
+WHEN OLD.latest_snapshot_id IS NOT NULL AND NEW.latest_snapshot_id IS NULL
+BEGIN SELECT RAISE(ABORT, 'a source cannot lose its latest snapshot'); END;
+
+CREATE TRIGGER check_runs_snapshots_on_insert BEFORE INSERT ON check_runs
+WHEN (NEW.snapshot_id IS NOT NULL AND NOT EXISTS (
+          SELECT 1 FROM snapshots WHERE id = NEW.snapshot_id AND source_id = NEW.source_id))
+  OR (NEW.before_snapshot_id IS NOT NULL AND NOT EXISTS (
+          SELECT 1 FROM snapshots WHERE id = NEW.before_snapshot_id AND source_id = NEW.source_id))
+BEGIN SELECT RAISE(ABORT, 'a check can only refer to snapshots of its own source'); END;
+
+CREATE TRIGGER check_runs_snapshots_on_update BEFORE UPDATE OF snapshot_id, before_snapshot_id ON check_runs
+WHEN (NEW.snapshot_id IS NOT NULL AND NOT EXISTS (
+          SELECT 1 FROM snapshots WHERE id = NEW.snapshot_id AND source_id = NEW.source_id))
+  OR (NEW.before_snapshot_id IS NOT NULL AND NOT EXISTS (
+          SELECT 1 FROM snapshots WHERE id = NEW.before_snapshot_id AND source_id = NEW.source_id))
+BEGIN SELECT RAISE(ABORT, 'a check can only refer to snapshots of its own source'); END;
+
+-- A change must belong to a finished 'changed' check and repeat exactly that
+-- check's source and before/after snapshots.
+CREATE TRIGGER changes_match_their_check BEFORE INSERT ON changes
+WHEN NOT EXISTS (
+    SELECT 1 FROM check_runs
+    WHERE id = NEW.check_run_id
+      AND status = 'changed'
+      AND source_id = NEW.source_id
+      AND before_snapshot_id = NEW.before_snapshot_id
+      AND snapshot_id = NEW.after_snapshot_id)
+BEGIN SELECT RAISE(ABORT, 'a change must match its changed check'); END;
 
 CREATE TRIGGER contracts_immutable BEFORE UPDATE ON contracts
 BEGIN SELECT RAISE(ABORT, 'contracts are immutable'); END;

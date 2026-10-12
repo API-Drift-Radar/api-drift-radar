@@ -267,12 +267,24 @@ class SchemaRuleTests(DatabaseTestCase):
             NOW,
         )
 
-    def test_document_paths_are_unique_per_snapshot(self):
+    def test_each_url_appears_once_per_snapshot(self):
         self.assertRejected(
             "INSERT INTO snapshot_documents (snapshot_id, path, source_url, retrieved_at) "
-            "VALUES ('snap_1', 'root.yaml', 'https://api.example.com/again', ?)",
+            "VALUES ('snap_1', 'refs/x.yaml', 'https://api.example.com/openapi.yaml', ?)",
             NOW,
         )
+
+    def test_identical_content_from_two_urls_may_share_a_path(self):
+        for url in ("https://api.example.com/a/user.yaml", "https://api.example.com/b/user.yaml"):
+            self.db.execute(
+                "INSERT INTO snapshot_documents (snapshot_id, path, source_url, retrieved_at) "
+                "VALUES ('snap_1', 'refs/same.yaml', ?, ?)",
+                (url, NOW),
+            )
+        count = self.db.execute(
+            "SELECT COUNT(*) FROM snapshot_documents WHERE path = 'refs/same.yaml'"
+        ).fetchone()[0]
+        self.assertEqual(count, 2)
 
     def test_document_must_belong_to_a_snapshot(self):
         self.assertRejected(
@@ -295,20 +307,61 @@ class SchemaRuleTests(DatabaseTestCase):
         self.assertEqual(tuple(row), ("failed", "discovery", "not_found"))
 
     def test_changes_are_permanent(self):
-        self.insert_running_check("chk_2")
-        self.db.execute(
-            "UPDATE check_runs SET status = 'changed', finished_at = ?, "
-            "before_snapshot_id = 'snap_1', snapshot_id = 'snap_1' WHERE id = 'chk_2'",
-            (LATER,),
-        )
-        self.db.execute(
-            "INSERT INTO changes (id, check_run_id, source_id, before_snapshot_id, "
-            "after_snapshot_id, ordinal, change_type, location, classification, summary) "
-            "VALUES ('chg_1', 'chk_2', 'src_1', 'snap_1', 'snap_1', 0, 'operation_removed', "
-            "'GET /users', 'potentially_breaking', 'GET /users was removed')"
-        )
+        self.finish_as_changed("chk_2")
+        self.insert_change("chg_1", "chk_2", "src_1", "snap_1", "snap_2")
         self.assertRejected("UPDATE changes SET summary = 'x'")
         self.assertRejected("DELETE FROM changes")
+
+    def test_change_must_match_its_check(self):
+        self.finish_as_changed("chk_2")
+        self.insert_running_check("chk_3")
+        self.add_second_source()
+        bad_changes = [
+            ("running check", "chk_3", "src_1", "snap_1", "snap_2"),
+            ("initial check", "chk_1", "src_1", "snap_1", "snap_2"),
+            ("missing check", "chk_missing", "src_1", "snap_1", "snap_2"),
+            ("wrong before", "chk_2", "src_1", "snap_2", "snap_2"),
+            ("wrong after", "chk_2", "src_1", "snap_1", "snap_1"),
+            ("wrong source", "chk_2", "src_2", "snap_1", "snap_2"),
+        ]
+        for label, check_id, source_id, before, after in bad_changes:
+            with self.subTest(case=label):
+                with self.assertRaises(sqlite3.DatabaseError):
+                    self.insert_change("chg_x", check_id, source_id, before, after)
+
+    def test_source_keeps_its_identity(self):
+        self.assertRejected("UPDATE sources SET locator = 'https://other.example'")
+        self.assertRejected("UPDATE sources SET created_at = ?", LATER)
+        self.assertRejected("UPDATE sources SET id = 'src_9'")
+
+    def test_source_config_can_change(self):
+        self.db.execute("UPDATE sources SET config_json = '{\"paused\": true}' WHERE id = 'src_1'")
+
+    def test_latest_snapshot_must_be_the_sources_own(self):
+        self.add_second_source()
+        self.assertRejected(
+            "UPDATE sources SET latest_snapshot_id = 'snap_other' WHERE id = 'src_1'"
+        )
+        self.add_snapshot("snap_2", "src_1")
+        self.db.execute("UPDATE sources SET latest_snapshot_id = 'snap_2' WHERE id = 'src_1'")
+
+    def test_latest_snapshot_cannot_be_cleared(self):
+        self.assertRejected("UPDATE sources SET latest_snapshot_id = NULL WHERE id = 'src_1'")
+
+    def test_check_cannot_refer_to_another_sources_snapshot(self):
+        self.add_second_source()
+        self.assertRejected(
+            "INSERT INTO check_runs (id, source_id, status, started_at, finished_at, "
+            "snapshot_id) VALUES ('chk_x', 'src_1', 'initial', ?, ?, 'snap_other')",
+            NOW, LATER,
+        )
+        self.add_snapshot("snap_2", "src_1")
+        self.insert_running_check("chk_y")
+        self.assertRejected(
+            "UPDATE check_runs SET status = 'changed', finished_at = ?, "
+            "before_snapshot_id = 'snap_other', snapshot_id = 'snap_2' WHERE id = 'chk_y'",
+            LATER,
+        )
 
     def test_running_check_can_finish_once(self):
         self.insert_running_check("chk_2")
@@ -349,11 +402,11 @@ class SchemaRuleTests(DatabaseTestCase):
                 )
 
     def test_classification_must_be_agreed_category(self):
-        self.insert_running_check("chk_2")
+        self.finish_as_changed("chk_2")
         self.assertRejected(
             "INSERT INTO changes (id, check_run_id, source_id, before_snapshot_id, "
             "after_snapshot_id, ordinal, change_type, location, classification, summary) "
-            "VALUES ('chg_x', 'chk_2', 'src_1', 'snap_1', 'snap_1', 0, 't', 'l', 'breaking', 's')"
+            "VALUES ('chg_x', 'chk_2', 'src_1', 'snap_1', 'snap_2', 0, 't', 'l', 'breaking', 's')"
         )
 
     def test_references_must_exist(self):
@@ -364,6 +417,40 @@ class SchemaRuleTests(DatabaseTestCase):
         )
         self.assertRejected(
             "UPDATE sources SET latest_snapshot_id = 'snap_missing' WHERE id = 'src_1'"
+        )
+
+    def add_snapshot(self, snapshot_id, source_id):
+        self.db.execute(
+            "INSERT INTO snapshots (id, source_id, fingerprint, captured_at, "
+            "normalization_version) VALUES (?, ?, ?, ?, 'norm-1')",
+            (snapshot_id, source_id, FINGERPRINT, LATER),
+        )
+
+    def add_second_source(self):
+        self.db.execute(
+            "INSERT INTO sources (id, locator, created_at) "
+            "VALUES ('src_2', 'https://other.example', ?)",
+            (NOW,),
+        )
+        self.add_snapshot("snap_other", "src_2")
+
+    def finish_as_changed(self, check_id):
+        """A 'changed' check from snap_1 to a new snap_2."""
+        self.add_snapshot("snap_2", "src_1")
+        self.insert_running_check(check_id)
+        self.db.execute(
+            "UPDATE check_runs SET status = 'changed', finished_at = ?, "
+            "before_snapshot_id = 'snap_1', snapshot_id = 'snap_2' WHERE id = ?",
+            (LATER, check_id),
+        )
+
+    def insert_change(self, change_id, check_id, source_id, before, after):
+        self.db.execute(
+            "INSERT INTO changes (id, check_run_id, source_id, before_snapshot_id, "
+            "after_snapshot_id, ordinal, change_type, location, classification, summary) "
+            "VALUES (?, ?, ?, ?, ?, 0, 'operation_removed', 'GET /users', "
+            "'potentially_breaking', 'GET /users was removed')",
+            (change_id, check_id, source_id, before, after),
         )
 
     def insert_running_check(self, check_id):

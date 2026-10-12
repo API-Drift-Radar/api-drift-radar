@@ -21,7 +21,7 @@ from radar.storage.errors import StoreError
 
 MIGRATIONS_DIRECTORY = Path(__file__).resolve().parents[3] / "migrations"
 
-_MIGRATION_NAME = re.compile(r"^(\d{4})_[a-z0-9_]+\.sql$")
+_MIGRATION_NAME = re.compile(r"(\d{4})_[a-z0-9_]+\.sql")
 _BUSY_TIMEOUT_SECONDS = 30
 
 
@@ -103,7 +103,7 @@ def load_migrations(directory):
     for path in sorted(directory.iterdir()):
         if path.suffix != ".sql":
             continue
-        match = _MIGRATION_NAME.match(path.name)
+        match = _MIGRATION_NAME.fullmatch(path.name)
         if not match:
             raise StoreError(f"Badly named migration: {path.name}")
         migrations.append((int(match.group(1)), path.name, path.read_text("utf-8")))
