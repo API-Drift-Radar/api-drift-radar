@@ -40,6 +40,10 @@ INCOMING_PREFIX = ".incoming-"
 # Characters Windows does not allow in file names, plus the separators.
 _FORBIDDEN_CHARACTERS = frozenset('<>:"\\|?*')
 _MAX_PATH_LENGTH = 512
+_WINDOWS_RESERVED_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"}
+    | {f"{device}{n}" for device in ("COM", "LPT") for n in "123456789¹²³"}
+)
 
 
 @dataclass(frozen=True)
@@ -129,45 +133,42 @@ class ContractFiles:
         return os.path.isdir(self._path(fingerprint))
 
     def read(self, fingerprint):
-        """Return the stored bundle. Raises StoreError if anything is off."""
-        manifest = self.verify(fingerprint)
-        base = self._path(fingerprint)
-        documents = {
-            entry["path"]: _read(_document_path(base, entry["path"]), fingerprint)
-            for entry in manifest["documents"]
-        }
+        """Return the stored bundle. Raises StoreError if anything is off.
+
+        Each file is read once and checked against the manifest as it is read.
+        """
+        manifest, documents, normalized = self._load(fingerprint)
         return StoredContract(
             fingerprint=fingerprint,
             entry_point=manifest["entry_point"],
             documents=documents,
-            normalized=_read(os.path.join(base, NORMALIZED_NAME), fingerprint),
+            normalized=normalized,
             normalization_version=manifest["normalization_version"],
         )
 
     def verify(self, fingerprint):
         """Check every file in a bundle against its manifest; return the manifest."""
+        return self._load(fingerprint)[0]
+
+    def _load(self, fingerprint):
         base = self._path(fingerprint)
         if not os.path.isdir(base):
             raise StoreError(f"Contract content {fingerprint} is missing.")
         raw = _read(os.path.join(base, MANIFEST_NAME), fingerprint)
         if _sha256(raw) != fingerprint:
             raise StoreError(f"Contract content {fingerprint} has a corrupted manifest.")
-        manifest = json.loads(raw)
-        if manifest.get("format") != MANIFEST_FORMAT:
-            raise StoreError(
-                f"Contract content {fingerprint} uses unsupported format "
-                f"{manifest.get('format')!r}."
-            )
+        manifest = _parse_manifest(raw, fingerprint)
 
-        files = [
-            (_document_path(base, entry["path"]), entry["sha256"])
-            for entry in manifest["documents"]
-        ]
-        files.append((os.path.join(base, NORMALIZED_NAME), manifest["normalized"]["sha256"]))
-        for file_path, digest in files:
-            if _sha256(_read(file_path, fingerprint)) != digest:
+        documents = {}
+        for entry in manifest["documents"]:
+            data = _read(_document_path(base, entry["path"]), fingerprint)
+            if _sha256(data) != entry["sha256"]:
                 raise StoreError(f"Contract content {fingerprint} is corrupted on disk.")
-        return manifest
+            documents[entry["path"]] = data
+        normalized = _read(os.path.join(base, NORMALIZED_NAME), fingerprint)
+        if _sha256(normalized) != manifest["normalized"]["sha256"]:
+            raise StoreError(f"Contract content {fingerprint} is corrupted on disk.")
+        return manifest, documents, normalized
 
     def _path(self, fingerprint):
         if (
@@ -210,6 +211,9 @@ def check_document_path(path):
         # Windows silently drops trailing dots and spaces from names.
         if part in ("", ".", "..") or part != part.rstrip(". "):
             raise ValueError(f"Invalid document path: {path!r}.")
+        # Windows treats these names as devices, with or without an extension.
+        if part.split(".", 1)[0].rstrip(" ").upper() in _WINDOWS_RESERVED_NAMES:
+            raise ValueError(f"Invalid document path: {path!r}.")
 
 
 def check_document_set(paths):
@@ -230,6 +234,57 @@ def check_document_set(paths):
                 raise ValueError(
                     f"Document {folded[prefix]!r} is also used as a directory by {path!r}."
                 )
+
+
+def _parse_manifest(raw, fingerprint):
+    """Decode a manifest and check its shape, so a crafted or damaged manifest
+    can never point outside its bundle or crash the reader."""
+    def broken(detail):
+        return StoreError(f"Contract content {fingerprint} has an invalid manifest: {detail}.")
+
+    try:
+        manifest = json.loads(raw)
+    except (UnicodeDecodeError, ValueError):
+        raise broken("not JSON") from None
+    if not isinstance(manifest, dict):
+        raise broken("not an object")
+    if manifest.get("format") != MANIFEST_FORMAT:
+        raise StoreError(
+            f"Contract content {fingerprint} uses unsupported format "
+            f"{manifest.get('format')!r}."
+        )
+    documents = manifest.get("documents")
+    normalized = manifest.get("normalized")
+    if not isinstance(documents, list) or not documents:
+        raise broken("no documents")
+    if not isinstance(normalized, dict) or not _is_digest(normalized.get("sha256")):
+        raise broken("no normalized digest")
+    if not isinstance(manifest.get("normalization_version"), str):
+        raise broken("no normalization version")
+    paths = []
+    for entry in documents:
+        if not isinstance(entry, dict) or not _is_digest(entry.get("sha256")):
+            raise broken("a document entry is malformed")
+        try:
+            check_document_path(entry.get("path"))
+        except ValueError:
+            raise broken(f"unsafe document path {entry.get('path')!r}") from None
+        paths.append(entry["path"])
+    try:
+        check_document_set(paths)
+    except ValueError as error:
+        raise broken(str(error)) from None
+    if len(set(paths)) != len(paths) or manifest.get("entry_point") not in paths:
+        raise broken("entry point or document list is inconsistent")
+    return manifest
+
+
+def _is_digest(value):
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(c in "0123456789abcdef" for c in value)
+    )
 
 
 def _check_bundle(entry_point, documents, normalized, normalization_version):

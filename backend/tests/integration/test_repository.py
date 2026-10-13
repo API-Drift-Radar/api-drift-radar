@@ -1,3 +1,4 @@
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -390,6 +391,79 @@ class ChangeReadTests(StoreTestCase):
         ):
             with self.assertRaises(NotFoundError):
                 call()
+
+
+class InvalidTextTests(StoreTestCase):
+    """Text from a JSON request may hold lone surrogates, which cannot be stored."""
+
+    BROKEN = "bad \ud800 text"
+
+    def test_rejected_as_value_errors(self):
+        source = self.store.add_source(URL)
+        check = self.store.begin_check(source.id)
+        calls = [
+            lambda: self.store.add_source(URL + self.BROKEN),
+            lambda: self.store.add_source(URL, {"hint": self.BROKEN}),
+            lambda: self.store.add_source(URL, {self.BROKEN: 1}),
+            lambda: self.store.update_source_config(source.id, {"hint": self.BROKEN}),
+            lambda: self.store.fail_check(check.id, stage="fetch", reason="x", error=self.BROKEN),
+            lambda: self.store.fail_check(
+                check.id, stage="fetch", reason="x", error="e", detail={"why": self.BROKEN}
+            ),
+        ]
+        for index, call in enumerate(calls):
+            with self.subTest(call=index), self.assertRaises(ValueError) as caught:
+                call()
+            self.assertNotIsInstance(caught.exception, UnicodeError)
+
+        self.assertEqual(len(self.store.list_sources()), 1)
+        self.assertEqual(self.store.get_source(source.id).config, {})
+        self.assertEqual(self.store.get_check(check.id).status, RUNNING)
+
+
+class CorruptedRecordTests(StoreTestCase):
+    """Damage inside radar.db must surface as StoreError, never as a raw parsing error."""
+
+    def setUp(self):
+        super().setUp()
+        self.source = self.store.add_source(URL)
+        self.snapshot_id, self.check_id = self.add_snapshot(self.source.id)
+        self.raw = sqlite3.connect(self.data / "radar.db")
+        self.addCleanup(self.raw.close)
+
+    def damage(self, sql, *triggers):
+        for trigger in triggers:
+            self.raw.execute(f"DROP TRIGGER {trigger}")
+        self.raw.execute(sql)
+        self.raw.commit()
+
+    def assertCorrupted(self, label, read):
+        with self.assertRaisesRegex(StoreError, f"Stored {label} .* is corrupted"):
+            read()
+
+    def test_damaged_source(self):
+        self.damage("UPDATE sources SET config_json = '{oops'")
+        self.assertCorrupted("source", lambda: self.store.get_source(self.source.id))
+
+    def test_damaged_check(self):
+        self.damage(
+            "UPDATE check_runs SET started_at = 'yesterday'",
+            "check_runs_final", "check_runs_identity",
+        )
+        self.assertCorrupted("check", lambda: self.store.get_check(self.check_id))
+
+    def test_damaged_snapshot(self):
+        self.damage("UPDATE snapshots SET provenance_json = 'not json'", "snapshots_immutable")
+        self.assertCorrupted("snapshot", lambda: self.store.latest_snapshot(self.source.id))
+
+    def test_damaged_snapshot_document(self):
+        self.damage(
+            "UPDATE snapshot_documents SET retrieved_at = '2026'",
+            "snapshot_documents_immutable",
+        )
+        self.assertCorrupted(
+            "snapshot document", lambda: self.store.snapshot_documents(self.snapshot_id)
+        )
 
 
 class RestartTests(StoreTestCase):

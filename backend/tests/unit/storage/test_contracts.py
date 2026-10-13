@@ -1,3 +1,5 @@
+import hashlib
+import json
 import os
 import tempfile
 import unittest
@@ -201,6 +203,67 @@ class IntegrityTests(ContractFilesTestCase):
         with self.assertRaises(StoreError):
             self.put()
 
+    def plant_bundle(self, manifest_bytes, files=()):
+        """Create a bundle by hand whose name matches its manifest, as an
+        attacker with write access to the data folder could."""
+        fingerprint = hashlib.sha256(manifest_bytes).hexdigest()
+        base = self.dir / fingerprint
+        base.mkdir(parents=True)
+        (base / "manifest.json").write_bytes(manifest_bytes)
+        for relative, data in files:
+            target = base / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+        return fingerprint
+
+    def test_rejects_manifest_pointing_outside_its_bundle(self):
+        secret = self.dir / "secret.txt"
+        self.dir.mkdir(parents=True, exist_ok=True)
+        secret.write_bytes(b"do not read")
+        digest = hashlib.sha256(b"do not read").hexdigest()
+        manifest = {
+            "format": 1, "entry_point": "../../secret.txt", "normalization_version": "n",
+            "documents": [{"path": "../../secret.txt", "sha256": digest, "size": 11}],
+            "normalized": {"sha256": digest, "size": 11},
+        }
+        fingerprint = self.plant_bundle(json.dumps(manifest).encode())
+        with self.assertRaisesRegex(StoreError, "invalid manifest"):
+            self.files.read(fingerprint)
+
+    def test_rejects_malformed_manifests(self):
+        good_digest = "0" * 64
+        cases = {
+            "not json": b"\xff\xfe not json",
+            "not an object": b"[1, 2]",
+            "no documents": json.dumps({"format": 1, "documents": [], "normalized": {"sha256": good_digest}}).encode(),
+            "bad digest": json.dumps({
+                "format": 1, "entry_point": "a.yaml", "normalization_version": "n",
+                "documents": [{"path": "a.yaml", "sha256": "xyz"}], "normalized": {"sha256": good_digest},
+            }).encode(),
+            "missing entry point": json.dumps({
+                "format": 1, "entry_point": "b.yaml", "normalization_version": "n",
+                "documents": [{"path": "a.yaml", "sha256": good_digest}], "normalized": {"sha256": good_digest},
+            }).encode(),
+        }
+        for label, raw in cases.items():
+            with self.subTest(case=label):
+                fingerprint = self.plant_bundle(raw)
+                with self.assertRaises(StoreError):
+                    self.files.read(fingerprint)
+
+    def test_read_opens_each_file_once(self):
+        fingerprint = self.put()
+        real_read = contracts._read
+        opened = []
+
+        def counting_read(path, fp):
+            opened.append(os.path.basename(path))
+            return real_read(path, fp)
+
+        with patch.object(contracts, "_read", side_effect=counting_read):
+            self.files.read(fingerprint)
+        self.assertEqual(sorted(opened), sorted(["manifest.json", "openapi.yaml", "user.yaml", "normalized"]))
+
     def test_rejects_malformed_fingerprints(self):
         for bad in ("", "../etc", "A" * 64, "0" * 63, None):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
@@ -218,6 +281,19 @@ class InputValidationTests(ContractFilesTestCase):
 
     def test_accepts_ordinary_paths(self):
         for good in ("openapi.yaml", "specs/v1/openapi.json", "a b/c-d_e.yaml", ".well-known/x"):
+            with self.subTest(path=good):
+                check_document_path(good)
+
+    def test_rejects_windows_device_names(self):
+        for bad in (
+            "con.yaml", "CON", "refs/nul", "aux.tar.gz", "COM1.json", "lpt9",
+            "Prn.yaml", "CON .yaml", "conin$", "refs/com¹.yaml",
+        ):
+            with self.subTest(path=bad), self.assertRaises(ValueError):
+                check_document_path(bad)
+
+    def test_accepts_names_that_only_resemble_devices(self):
+        for good in ("console.yaml", "com10.json", "nul_spec.yaml", "refs/conx", "auxiliary"):
             with self.subTest(path=good):
                 check_document_path(good)
 

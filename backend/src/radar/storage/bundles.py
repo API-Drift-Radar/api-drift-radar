@@ -99,6 +99,11 @@ def _read_document(document, label):
         raise ValueError(f"The {label}'s retrieved_at must be a timezone-aware datetime.")
     if media_type is not None and not isinstance(media_type, str):
         raise TypeError(f"The {label}'s media_type must be a string or None.")
+    for name, text in (("source_url", url), ("media_type", media_type or "")):
+        try:
+            text.encode("utf-8")
+        except UnicodeEncodeError:
+            raise ValueError(f"The {label}'s {name} is not valid text.") from None
     return url, bytes(content), retrieved_at, media_type
 
 

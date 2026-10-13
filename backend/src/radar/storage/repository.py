@@ -334,10 +334,19 @@ class Store:
 _KIND_NAMES = {SOURCE: "source", CHECK: "check", SNAPSHOT: "snapshot", CHANGE: "change"}
 
 
+def _check_text(value, name):
+    """Reject text SQLite cannot store, such as a lone surrogate from JSON input."""
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        raise ValueError(f"{name} contains characters that are not valid text.") from None
+    return value
+
+
 def _check_locator(locator):
     if not isinstance(locator, str):
         raise ValueError("A source locator must be a string.")
-    locator = locator.strip()
+    locator = _check_text(locator, "The source locator").strip()
     if not locator:
         raise ValueError("A source locator cannot be empty.")
     if len(locator) > MAX_LOCATOR_LENGTH:
@@ -350,7 +359,7 @@ def _check_locator(locator):
 def _check_error(error):
     if not isinstance(error, str) or not error.strip():
         raise ValueError("A failed check needs an error message.")
-    error = error.strip()
+    error = _check_text(error, "The error message").strip()
     if len(error) > MAX_ERROR_LENGTH:
         error = error[: MAX_ERROR_LENGTH - len(_TRUNCATION_MARK)] + _TRUNCATION_MARK
     return error
@@ -363,7 +372,7 @@ def _to_json(value, name, expected_type):
         text = json.dumps(value, sort_keys=True, allow_nan=False, ensure_ascii=False)
     except (TypeError, ValueError) as error:
         raise ValueError(f"{name} must contain only JSON values: {error}") from None
-    if len(text.encode("utf-8")) > MAX_JSON_BYTES:
+    if len(_check_text(text, name).encode("utf-8")) > MAX_JSON_BYTES:
         raise ValueError(f"{name} is larger than {MAX_JSON_BYTES} bytes.")
     return text
 
@@ -376,10 +385,29 @@ def _limit(limit):
     return f" LIMIT {limit}"
 
 
+def _record(kind):
+    """Turn any failure to read a stored row into a StoreError naming the record."""
+
+    def decorate(convert):
+        def wrapper(row):
+            try:
+                return convert(row)
+            except (ValueError, TypeError, KeyError) as error:
+                identifier = row["id"] if "id" in row.keys() else row["snapshot_id"]
+                raise StoreError(
+                    f"Stored {kind} {identifier} is corrupted: {error}"
+                ) from error
+
+        return wrapper
+
+    return decorate
+
+
 def _optional_time(text):
     return None if text is None else parse_timestamp(text)
 
 
+@_record("source")
 def _source(row):
     return Source(
         id=row["id"],
@@ -390,6 +418,7 @@ def _source(row):
     )
 
 
+@_record("check")
 def _check_run(row):
     return CheckRun(
         id=row["id"],
@@ -407,6 +436,7 @@ def _check_run(row):
     )
 
 
+@_record("snapshot")
 def _snapshot(row):
     return Snapshot(
         id=row["id"],
@@ -421,6 +451,7 @@ def _snapshot(row):
     )
 
 
+@_record("snapshot document")
 def _snapshot_document(row):
     return SnapshotDocument(
         snapshot_id=row["snapshot_id"],
@@ -432,6 +463,7 @@ def _snapshot_document(row):
     )
 
 
+@_record("change")
 def _change(row):
     return ChangeRecord(
         id=row["id"],

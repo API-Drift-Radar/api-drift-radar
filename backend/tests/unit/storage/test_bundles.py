@@ -119,6 +119,8 @@ class PlanTests(unittest.TestCase):
             (Captured("https://x.example/spec", ROOT_YAML, datetime(2026, 1, 1)), ValueError),
             (Captured("https://x.example/spec", ROOT_YAML, "2026-01-01"), ValueError),
             (Captured("https://x.example/spec", ROOT_YAML, NOW, 7), TypeError),
+            (Captured("https://x.example/\ud800", ROOT_YAML, NOW), ValueError),
+            (Captured("https://x.example/spec", ROOT_YAML, NOW, "text/\udfff"), ValueError),
             (object(), ValueError),
         ]
         for document, error in cases:
