@@ -116,11 +116,12 @@ def test_a_framework_description_under_a_context_path_taken_from_the_targets_own
     assert outcome.status is V and outcome.package.candidate.discovery_method == 'framework_probe'
     assert outcome.package.candidate.source_url == f'{base}/platform/v3/api-docs'
     # a capped, evidence-backed set of probes, not a combinatorial scan of filenames
-    from radar.discovery.navigation import FRAMEWORK_PROBES
-    allowed = {context + probe for context in ('', '/platform') for probe in FRAMEWORK_PROBES}
+    from radar.discovery.navigation import CONTEXT_PROBES, FRAMEWORK_PROBES
+    allowed = {context + probe for context in ('', '/platform', '/platform/api')
+               for probe in FRAMEWORK_PROBES + (CONTEXT_PROBES if context else ())}
     probes = [p for p in log if p in allowed]
-    assert 0 < len(probes) <= 8 and '/platform/v3/api-docs' in probes
-    assert not any(p.startswith('/platform/api/') for p in log)  # the deepest path prefix is not combined with probes
+    assert 0 < len(probes) <= 20 and '/platform/v3/api-docs' in probes
+    assert '/platform/api/orders' not in log  # the endpoint itself is never a prefix
 
 
 def test_probes_are_only_tried_when_nothing_else_was_accepted():

@@ -16,6 +16,11 @@ KEYWORD_SCORES = (
     (re.compile(r'(?i)guide|integrat|getting[- ]started|resources?|sdks?|portal|machine[- ]readable'), 1),
 )
 NEGATIVE = re.compile(r'(?i)pricing|login|log-?in|sign-?(?:in|up)|careers?|jobs|blog|press|privacy|terms|cookie|status\.|support/|contact')
+# Social, community and app-store sites: never documentation for the API being searched, whatever their link text says.
+OFF_SITE = re.compile(
+    r'(?i)(?:^|\.)(?:linkedin\.com|twitter\.com|x\.com|facebook\.com|fb\.com|instagram\.com|youtube\.com|youtu\.be|'
+    r'tiktok\.com|reddit\.com|discord\.com|discord\.gg|t\.me|pinterest\.com|medium\.com|threads\.net|snapchat\.com|'
+    r'apps\.apple\.com|play\.google\.com|slack\.com/(?:community|apps)|bsky\.app|mastodon\.social|wa\.me)$')
 # Navigation follows links scoring at least MIN_SCORE; a model is shown links scoring at least MODEL_MIN_SCORE,
 # so it can choose among promising links the rules would not follow on their own.
 MIN_SCORE, MIN_CROSS_ORIGIN_SCORE, MODEL_MIN_SCORE = 4, 6, 1
@@ -23,8 +28,11 @@ MIN_SCORE, MIN_CROSS_ORIGIN_SCORE, MODEL_MIN_SCORE = 4, 6, 1
 
 def score_link(url: str, label: str = '') -> int:
     try:
-        path = urlsplit(url).path
+        parts = urlsplit(url)
+        path = parts.path
     except ValueError:
+        return 0
+    if OFF_SITE.search(parts.hostname or ''):
         return 0
     if ASSET.search(path):
         return 0

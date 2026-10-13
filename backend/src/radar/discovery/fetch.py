@@ -44,6 +44,7 @@ class FetchResult:
     failure: FetchFailure | None = None
     retry_after: str | None = None
     link_header: str | None = None  # the raw HTTP Link header of a successful response (RFC 8288), if any
+    truncated: bool = False  # only the first `document_byte_limit` bytes were read (a page fetched with truncate=True)
 
     @property
     def ok(self):
@@ -116,11 +117,13 @@ def _connection(parsed, answer, timeout):
 
 
 def fetch_document(url: str, budget: DiscoveryBudget, *, allow_loopback=False,
-                   document_byte_limit=None) -> FetchResult:
+                   document_byte_limit=None, truncate=False) -> FetchResult:
     """Fetch using a shared run budget; loopback is opt-in for controlled tests.
 
     `document_byte_limit` replaces the per-document size cap for this call only
-    (for a known large document). The shared total-bytes budget always applies.
+    (for a known large document). The shared total-bytes budget always applies. With `truncate`, a body larger
+    than the cap is not a failure: the first `document_byte_limit` bytes are returned and `truncated` is set. That
+    is for documentation pages, whose links and scripts sit near the top; contracts are never truncated.
 
     Failures contain no partial document. Byte usage includes partial reads from
     failed captures. Redirects each consume a request and repeat destination checks.
@@ -200,15 +203,16 @@ def fetch_document(url: str, budget: DiscoveryBudget, *, allow_loopback=False,
                     expected = int(length)
                     if response.getheader("Transfer-Encoding"):
                         raise _FetchError("invalid_response", "Conflicting response framing headers.")
-                    if expected > document_limit:
+                    if expected > document_limit and not truncate:
                         raise _FetchError("document_size_limit", "Document exceeds size limit.")
-                    if expected > budget.limits.max_total_bytes - budget.bytes_used:
+                    if expected > budget.limits.max_total_bytes - budget.bytes_used and not truncate:
                         raise _FetchError("total_size_limit", "Document exceeds remaining byte budget.")
                 encoding = response.getheader("Transfer-Encoding")
                 if encoding is not None and encoding.lower() != "chunked":
                     raise _FetchError("invalid_response", "Unsupported transfer encoding.")
                 chunks = []
                 size = 0
+                cut = False
                 while True:
                     budget.remaining()
                     # One sentinel byte detects overflow for unknown-length bodies.
@@ -221,14 +225,18 @@ def fetch_document(url: str, budget: DiscoveryBudget, *, allow_loopback=False,
                         break
                     size += len(chunk)
                     if size > document_limit:
-                        raise _FetchError("document_size_limit", "Document exceeds size limit.")
+                        if not truncate:
+                            raise _FetchError("document_size_limit", "Document exceeds size limit.")
+                        chunks.append(chunk[:len(chunk) - (size - document_limit)])
+                        cut = True
+                        break
                     chunks.append(chunk)
-                if expected is not None and size != expected:
+                if expected is not None and size != expected and not cut:
                     raise _FetchError("incomplete_response", "Response ended before Content-Length bytes arrived.")
                 link = response.getheader("Link")
                 return FetchResult(url, current, status, content_type, b"".join(chunks),
                                    datetime.now(timezone.utc), tuple(attempts),
-                                   link_header=link[:8192] if link else None)
+                                   link_header=link[:8192] if link else None, truncated=cut)
             finally:
                 if timer is not None:
                     timer.cancel()

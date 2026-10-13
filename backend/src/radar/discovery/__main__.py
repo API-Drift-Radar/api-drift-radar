@@ -8,7 +8,7 @@
     python -m radar.discovery api.example.com --deep --trail      # a larger budget, and every navigation step
     python -m radar.discovery.llm_input https://docs.example.com/api   # what the model step would see; free
 
-Exit status: 0 validated, 1 any other outcome, 2 unusable input.
+Exit status: 0 validated, 1 any other outcome (including unconfirmed), 2 unusable input.
 """
 
 import argparse
@@ -85,6 +85,7 @@ def main(argv=None) -> int:
     parser.add_argument('--max-requests', type=int, default=None)
     parser.add_argument('--max-document-mb', type=float, default=None, help='per-document size limit (default 5)')
     parser.add_argument('--allow-loopback', action='store_true', help='allow localhost targets (for local testing)')
+    parser.add_argument('--no-directory', action='store_true', help='do not consult the public APIs.guru directory')
     parser.add_argument('--deep', action='store_true', help='a larger budget for a deliberate deeper search (60 requests, 120 s)')
     parser.add_argument('--trail', action='store_true', help='also show every navigation step with its parent and mechanism')
     parser.add_argument('--json', action='store_true', help='print the machine-readable result instead')
@@ -116,7 +117,7 @@ def main(argv=None) -> int:
             kwargs['llm_ledger'] = CostLedger(args.ledger, LlmLimits(max_total_usd=args.budget))
         outcome = discover(DiscoveryRequest(args.target, method=args.method, api_version=args.api_version,
                                             product=args.product), allow_loopback=args.allow_loopback,
-                           documentation_urls=args.docs_url, **kwargs)
+                           documentation_urls=args.docs_url, use_directory=not args.no_directory, **kwargs)
         if args.select and outcome.status is DiscoveryStatus.AMBIGUOUS:
             outcome = select_candidate(outcome, args.select)
     except (DiscoveryInputError, ValueError) as error:

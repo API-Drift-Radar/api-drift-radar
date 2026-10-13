@@ -251,6 +251,18 @@ def _relevant_servers(target, document, everything=False):
             if not (s.absolute and s.host is not None and hosts_related(target.hostname, s.host) is None)]
 
 
+_VERSION_SEGMENT = re.compile(r'v\d+(?:\.\d+)?|\d{4}-\d{2}-\d{2}', re.IGNORECASE)
+
+
+def _looks_like_api_path(path: str, bases: list[str]) -> bool:
+    """A path under a declared server base, or with a version segment, is an endpoint, not a docs page."""
+    if any(b and path.startswith(b + '/') for b in bases):
+        return True
+    segments = [segment for segment in path.split('/') if segment]
+    versioned = any(_VERSION_SEGMENT.fullmatch(segment) for segment in segments)
+    return versioned and any(not _VERSION_SEGMENT.fullmatch(segment) for segment in segments)  # `/v1` alone is a base
+
+
 def check_operation(target: NormalizedTarget, summary: ContractSummary, document: Mapping[str, Any],
                     source_url: str) -> MatchCheck:
     """Does the contract define the operation the target names?
@@ -285,6 +297,9 @@ def check_operation(target: NormalizedTarget, summary: ContractSummary, document
             return check(MATCH, f'{method} {_text(template, MAX_REPORTED_PATH)} is defined for {label}{where}.')
     hidden = summary.unexpanded_path_items or base_unknown
     if not target.method:
+        if not hidden and _looks_like_api_path(path, bases):
+            return check(MISMATCH, f'No path matching {label} is defined among {len(operations)} operations, '
+                                   'and the URL path looks like an API endpoint (versioned or under a server base path).')
         return check(INDETERMINATE, f'No path matching {label} was found, but the URL path may not be an API endpoint.')
     if hidden:
         reason = (f'{summary.unexpanded_path_items} path item(s) are only $ref' if summary.unexpanded_path_items
@@ -403,7 +418,7 @@ def check_product(target: NormalizedTarget, summary: ContractSummary, document: 
 STAGE = 'matching'
 DOCUMENTATION_METHODS = frozenset({
     'documentation_link', 'swagger_ui_config', 'redoc_config', 'spec_url_attribute', 'service_desc_link', 'api_catalog',
-    'swagger_config_url', 'swagger_config_url_entry', 'embedded_spec', 'documentation_navigation', 'llm_suggestion'})
+    'swagger_config_url', 'swagger_config_url_entry', 'embedded_spec', 'script_literal', 'documentation_navigation', 'llm_suggestion'})
 REJECTION_CODES = {'server_host': 'server_host_mismatch', 'operation': 'operation_not_found',
                    'api_version': 'version_mismatch', 'product': 'product_mismatch'}
 GENERAL_LIMITATION = 'Matching applies explicit rules to the contract text and its origin; it does not prove identity.'

@@ -66,7 +66,36 @@ def test_redoc_init_and_the_call_cap():
 
 def test_scripts_without_viewer_calls_yield_nothing():
     scan = scan_viewer_script("analytics.url = '/openapi.json'; var SwaggerUIBundleX = 1;")
-    assert scan == scan_viewer_script('') and scan.description_urls == ()
+    # No viewer configuration is recognised; the spec-looking literal is only a weaker, separately reported hint.
+    assert scan.description_urls == () and scan.config_urls == () and scan.unsupported == ()
+    assert scan.harvested_urls == ('/openapi.json',)
+
+
+def test_harvest_finds_spec_urls_the_viewer_forms_miss():
+    from radar.discovery.viewer_config import harvest_spec_urls
+    script = ('fetch("/spec.json"); const d = "https://x.io/v2/swagger.json"; '
+              'm = `a.io=https://a.io/api/openapi.json,b.io=https://b.io/openapi.yaml`; k = "/v3/api-docs"')
+    assert harvest_spec_urls(script) == ('/spec.json', 'https://x.io/v2/swagger.json', 'https://a.io/api/openapi.json',
+                                         'https://b.io/openapi.yaml', '/v3/api-docs')
+    assert scan_viewer_script(script).description_urls == ()
+
+
+def test_harvest_skips_assets_templates_and_bare_words():
+    from radar.discovery.viewer_config import harvest_spec_urls
+    script = ('"swagger-ui-bundle.js" "/swagger-ui.css" "${base}/openapi.json" "schema.json" "//cdn.x/openapi.json" '
+              '"/static/img/spec.png"')
+    assert harvest_spec_urls(script) == ()
+
+
+def test_harvest_is_bounded_and_linear():
+    import time
+    from radar.discovery.viewer_config import MAX_HARVESTED, harvest_spec_urls
+    started = time.monotonic()
+    for hostile in ('a' * 100000, '/a' * 60000, 'swagger ' * 30000, '/swagger' * 30000, 'https://' + 'a' * 100000):
+        harvest_spec_urls(hostile)
+    assert time.monotonic() - started < 2
+    many = ' '.join(f'"/s{i}/openapi.json"' for i in range(100))
+    assert len(harvest_spec_urls(many)) == MAX_HARVESTED
 
 
 # --- the JSON a configUrl serves ---------------------------------------------------------

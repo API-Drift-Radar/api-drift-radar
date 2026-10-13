@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from radar.discovery.candidates import RetrievedCandidate
-from radar.discovery.evaluation import CandidateEvaluation, evaluate_candidate, package_fingerprint
+from radar.discovery.evaluation import CandidateEvaluation, evaluate_candidate, has_servers, package_fingerprint
 from radar.discovery.fetch import FetchAttempt, FetchFailure, FetchResult
 from radar.discovery.input import normalize_target
 from radar.discovery.limits import DiscoveryBudget, FetchLimits
@@ -279,3 +279,15 @@ def test_referenced_files_are_compared_by_content_not_formatting():
     assert compact == fingerprint(root, files={url: b'{\n  "b": [1, 2],\n  "a": 1\n}'})
     assert compact == fingerprint(root, files={url: b'a: 1\nb: [1, 2]\n'})
     assert compact != fingerprint(root, files={url: b'{"a":1,"b":[2,1]}'})
+
+
+def test_a_copy_without_servers_differs_only_when_servers_are_ignored():
+    def package(content):
+        result, _ = evaluate(retrieved(content, url=SPEC_URL), None)
+        assert result.accepted, result.rejection
+        return result.package
+    declared = package(contract(servers=[{'url': 'https://api.acme.com/v1'}]))
+    implied = package(contract(servers=[]))
+    assert package_fingerprint(declared) != package_fingerprint(implied)
+    assert package_fingerprint(declared, without_servers=True) == package_fingerprint(implied, without_servers=True)
+    assert has_servers(declared) and not has_servers(implied)

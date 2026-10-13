@@ -30,6 +30,10 @@ class NormalizedTarget:
 
 class DiscoveryStatus(str, Enum):
     VALIDATED = "validated"
+    # One valid contract was found and it declares the target's host, but nothing else ties it to this API: it was
+    # found by a link or a third-party index, and no requested operation, version or product confirmed it. It may be
+    # a partial description, a stale copy or another API's contract. The package is present, to be confirmed.
+    UNCONFIRMED = "unconfirmed"
     AMBIGUOUS = "ambiguous"
     NOT_FOUND = "not_found"
     INACCESSIBLE = "inaccessible"
@@ -143,7 +147,7 @@ class DiscoveryOutcome:
     def __post_init__(self):
         if not isinstance(self.status, DiscoveryStatus):
             raise ValueError("status must be a DiscoveryStatus.")
-        if (self.status is DiscoveryStatus.VALIDATED) != (self.package is not None):
-            raise ValueError("Only a validated outcome must contain a contract package.")
+        if (self.status in (DiscoveryStatus.VALIDATED, DiscoveryStatus.UNCONFIRMED)) != (self.package is not None):
+            raise ValueError("Only a validated or unconfirmed outcome must contain a contract package.")
         if self.packages and self.status is not DiscoveryStatus.AMBIGUOUS:
             raise ValueError("Only an ambiguous outcome carries alternative packages.")

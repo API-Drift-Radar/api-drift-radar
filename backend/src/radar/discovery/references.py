@@ -219,8 +219,8 @@ def _walk(root, start, limits):
                 if isinstance(node.get(key), str):
                     yield kind, _link_tokens(link), node[key]
             for key, child in reversed(list(node.items())):
-                if key in DATA_KEYS and not is_name_map:
-                    continue
+                if not is_name_map and (key in DATA_KEYS or str(key).startswith('x-')):
+                    continue  # example data and specification extensions are opaque, not references
                 if isinstance(child, (dict, list)):
                     stack.append((child, (link, key), key in NAME_MAPS))
         elif isinstance(node, list):

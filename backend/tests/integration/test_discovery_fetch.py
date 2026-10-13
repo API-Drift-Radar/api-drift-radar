@@ -28,6 +28,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'application/json')
             if self.path == '/truncated':
                 self.send_header('Content-Length', '100')
+            if self.path == '/bigpage':
+                self.send_header('Content-Length', '5016')
             self.end_headers()
             if self.path == '/slow':
                 time.sleep(0.2)
@@ -36,6 +38,9 @@ class Handler(BaseHTTPRequestHandler):
                     self.wfile.write(b'x')
                     self.wfile.flush()
                     time.sleep(0.02)
+                return
+            if self.path == '/bigpage':
+                self.wfile.write(b'<a href="/spec">' + b'x' * 5000)
                 return
             body = b'{"openapi":"3.0.3"}'
             self.wfile.write(body)
@@ -98,3 +103,15 @@ def test_the_link_header_is_exposed_on_a_successful_response():
         server.server_close()
     assert result.ok and 'rel="service-desc"' in result.link_header and 'rel="service-doc"' in result.link_header
     assert budget.hosts == {f'127.0.0.1:{server.server_port}'}
+
+
+def test_truncate_returns_the_head_of_an_oversized_page_and_refuses_without_it(server):
+    budget = DiscoveryBudget(FetchLimits(max_requests=5, discovery_timeout=10))
+    result = fetch_document(server + '/bigpage', budget, allow_loopback=True, document_byte_limit=1000, truncate=True)
+    assert result.ok and result.truncated and len(result.content) == 1000 and result.content.startswith(b'<a href')
+    refused = fetch_document(server + '/bigpage', DiscoveryBudget(FetchLimits(max_requests=5, discovery_timeout=10)),
+                             allow_loopback=True, document_byte_limit=1000)
+    assert refused.failure.code == 'document_size_limit' and not refused.truncated
+    whole = fetch_document(server + '/openapi.json', DiscoveryBudget(FetchLimits(max_requests=5, discovery_timeout=10)),
+                           allow_loopback=True, document_byte_limit=1000, truncate=True)
+    assert whole.ok and not whole.truncated

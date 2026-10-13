@@ -7,7 +7,7 @@ import pytest
 from radar.discovery.fetch import FetchAttempt, FetchFailure, FetchResult
 from radar.discovery.limits import BudgetExceeded, DiscoveryBudget, FetchLimits
 from radar.discovery.link_scoring import MIN_SCORE, score_link
-from radar.discovery.navigation import FRAMEWORK_PROBES, Lead, NavigationLimits, Navigator, navigate
+from radar.discovery.navigation import CONTEXT_PROBES, FRAMEWORK_PROBES, Lead, NavigationLimits, Navigator, navigate
 from radar.domain.discovery import DiscoveryRequest
 
 HOST = 'https://api.acme.com'
@@ -223,9 +223,10 @@ def test_without_explore_only_explicit_evidence_is_followed():
 def test_explore_adds_the_origin_root_and_a_capped_set_of_framework_probes():
     _, _, site = run({}, target='https://api.acme.com/platform/api/orders')
     calls = [u.replace(HOST, '') for u in site.calls]
-    probes = [c for c in calls if any(c.endswith(p) for p in FRAMEWORK_PROBES)]
-    assert set(probes) == {ctx + p for ctx in ('', '/platform') for p in FRAMEWORK_PROBES} and len(probes) == 8
-    assert not any(c.startswith('/platform/api') for c in calls) and '/' in calls
+    probes = [c for c in calls if any(c.endswith(p) for p in FRAMEWORK_PROBES + CONTEXT_PROBES)]
+    assert set(probes) == ({p for p in FRAMEWORK_PROBES}
+                           | {ctx + p for ctx in ('/platform', '/platform/api') for p in FRAMEWORK_PROBES + CONTEXT_PROBES})
+    assert len(probes) == 4 + 2 * 8 and '/' in calls and '/platform/api/orders' not in calls
 
 
 def test_a_target_without_a_path_gets_only_root_probes():
@@ -398,3 +399,96 @@ def test_navigation_limits_are_validated():
                    {'max_links_per_page': -1}):
         with pytest.raises(ValueError):
             NavigationLimits(**kwargs)
+
+
+# --- spec-looking literals in scripts -------------------------------------------------------------
+
+SPEC = {'openapi': '3.0.0', 'info': {'title': 'T', 'version': '1'}, 'paths': {}}
+
+
+def test_a_spec_looking_literal_in_an_inline_script_becomes_a_lead_when_no_viewer_form_names_it():
+    html = page('<html><script>fetch("/spec.json").then(r => r.json())</script></html>')
+    _, result, site = run({'/': html, '/spec.json': ('json', SPEC)})
+    assert HOST + '/spec.json' in site.calls
+    assert [c.candidate.discovery_method for c in result.candidates] == ['script_literal']
+
+
+def test_a_literal_in_a_fetched_initializer_resolves_and_is_followed():
+    html = page('<html><script src="/swagger-initializer.js"></script></html>')
+    js = ('js', 'const d = "https://api.acme.com/v2/swagger.json"; ui = SwaggerUIBundle({url: d, dom_id: "#x"})')
+    _, result, site = run({'/': html, '/swagger-initializer.js': js, '/v2/swagger.json': ('json', SPEC)})
+    assert [c.candidate.discovery_method for c in result.candidates] == ['script_literal']
+
+
+def test_literals_on_hosts_unrelated_to_the_target_are_never_followed():
+    html = page('<html><script>m = "https://other.example.org/openapi.json"; n = "https://v3.api.acme.com/openapi.json"'
+                '</script></html>')
+    _, _, site = run({'/': html, 'https://v3.api.acme.com/openapi.json': ('json', SPEC)})
+    assert 'https://other.example.org/openapi.json' not in site.calls
+    assert 'https://v3.api.acme.com/openapi.json' in site.calls
+
+
+def test_literals_followed_from_one_source_are_capped():
+    urls = ' '.join(f'"/s{i}/openapi.json"' for i in range(8))
+    _, _, site = run({'/': page(f'<html><script>{urls}</script></html>')}, explore=True)
+    followed = [c for c in site.calls if c.endswith('/openapi.json') and '/s' in c]
+    assert len(followed) == 3
+
+
+# --- sibling hosts and off-site links ---------------------------------------------------------------
+
+def test_social_and_store_links_never_score_whatever_their_label_says():
+    for url in ('https://www.linkedin.com/company/acme-api', 'https://twitter.com/acme_api', 'https://x.com/acme',
+                'https://www.youtube.com/watch?v=1', 'https://apps.apple.com/app/acme-api-docs'):
+        assert score_link(url, 'API documentation') == 0
+    assert score_link('https://github.com/acme/openapi', 'OpenAPI spec') > 0
+
+
+def test_an_api_host_also_looks_at_its_parent_domain_and_documentation_hosts_after_page_navigation():
+    _, _, site = run({})
+    for host in ('acme.com', 'developer.acme.com', 'developers.acme.com', 'docs.acme.com'):
+        assert f'https://{host}/' in site.calls
+    assert site.calls.index('https://acme.com/') > site.calls.index(HOST + '/')
+    assert site.calls.index('https://docs.acme.com/') < site.calls.index(HOST + '/v3/api-docs')
+
+
+def test_sibling_hosts_are_not_guessed_for_an_ordinary_host_or_without_exploring():
+    _, _, site = run({}, target='www.acme.com')
+    assert not any('developer.' in c or c == 'https://acme.com/' for c in site.calls)
+    _, _, site = run({}, explore=False)
+    assert not any('developer.' in c for c in site.calls)
+
+
+def test_two_level_suffixes_keep_their_registrable_domain():
+    _, _, site = run({}, target='api.acme.co.uk')
+    assert 'https://acme.co.uk/' in site.calls and 'https://co.uk/' not in site.calls
+
+
+def test_a_page_on_a_sibling_host_can_lead_to_a_contract():
+    files = {'https://docs.acme.com/': page('<a href="/api/openapi.json">OpenAPI spec</a>'),
+             'https://docs.acme.com/api/openapi.json': ('json', SPEC)}
+    _, result, _ = run(files)
+    assert [c.candidate.source_url for c in result.candidates] == ['https://docs.acme.com/api/openapi.json']
+
+
+# --- per-endpoint reference pages -----------------------------------------------------------------
+
+def test_deep_reference_pages_are_capped_so_the_budget_reaches_other_leads():
+    deep = ''.join(f'<a href="/docs/api/reference/rest/res{i}/methods/list">API reference {i}</a>' for i in range(8))
+    files = {'/': page(f'<html>{deep}</html>')}
+    for i in range(8):
+        files[f'/docs/api/reference/rest/res{i}/methods/list'] = page('<html></html>')
+    limits = NavigationLimits(max_links_per_page=8)
+    _, result, site = run(files, limits=limits)
+    fetched = [c for c in site.calls if '/methods/list' in c]
+    assert len(fetched) == limits.max_deep_pages
+    assert 'deep_page_limit' in result.limits_reached
+    assert sum(1 for r in result.trail if r.outcome == 'skipped_limit' and '/methods/list' in r.url) == 8 - len(fetched)
+
+
+def test_shallow_documentation_pages_are_not_capped_and_come_first():
+    files = {'/': page('<html><a href="/docs/api/reference/rest/a/methods/list">API reference a</a>'
+                       '<a href="/developers">Developer API docs</a></html>'),
+             '/developers': page('<html></html>'), '/docs/api/reference/rest/a/methods/list': page('<html></html>')}
+    _, _, site = run(files)
+    assert site.calls.index(HOST + '/developers') < site.calls.index(HOST + '/docs/api/reference/rest/a/methods/list')

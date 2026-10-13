@@ -408,7 +408,7 @@ from radar.discovery.orchestrator import discover, select_candidate
 from radar.domain.discovery import DiscoveryRequest
 
 outcome = discover(DiscoveryRequest("api.github.com", method="GET", api_version="2022-11-28"))
-outcome.status       # validated | ambiguous | rejected | inaccessible | not_found
+outcome.status       # validated | unconfirmed | ambiguous | rejected | inaccessible | not_found
 outcome.package      # ValidatedContractPackage (validated only)
 outcome.packages     # the accepted alternatives (ambiguous only)
 outcome.candidates   # every evaluated candidate, with evidence and rejection reasons
@@ -783,3 +783,27 @@ Paid use remains explicitly enabled with `--llm` or an injected `llm_suggester`.
 The model still cannot invent accepted URLs or validate contracts. The two-call
 per-run limit, recorded-response test mode, and persistent $5 discovery cost cap
 are unchanged. No live model calls were needed to test this change.
+
+
+## Discovery generality: harvesting, directory, siblings, unconfirmed (issue #9, increment 3)
+
+Measured on the labeled benchmark (`python -m radar.discovery.benchmark`, live network, 32 targets, labels by the
+maintainer): recall on targets with a published OpenAPI 3.x contract is 0.86 (18 of 21) with no wrong contract returned; an earlier
+ad-hoc run of 24 real hosts before these changes found a contract for 5. The set is the one the changes were developed against, so
+treat the numbers as a regression baseline, not a general estimate.
+
+- **Spec-looking literals.** Any URL or path in a fetched script or inline script that names a specification file
+  (`*openapi*.json`, `swagger.yaml`, `/api-docs`, ...) becomes a lead (`script_literal`), tokenised in linear time,
+  at most three per source and only on hosts related to the target. Validation and matching still decide.
+- **Directory (APIs.guru).** When nothing was accepted, the provider's listing is read (`/v2/{provider}.json`, the host
+  then its parent domains). Steps, each only if nothing was accepted: the provider's own sources, the directory's copies
+  of them, then secondary entries. Disable with `use_directory=False` / `--no-directory`. Never positive provenance.
+- **Sibling hosts.** From an API-style host (`api.`, `rest.`, `*-api.`...) the parent domain and `developer.`,
+  `developers.`, `docs.` are tried after page navigation and before framework probes. A guessed host that does not
+  answer is ignored, not counted as inaccessible. Social and app-store links are never followed.
+- **Truncated pages.** A documentation page larger than `NavigationLimits.max_page_bytes` (1 MiB) is read up to that
+  size (`FetchResult.truncated`) instead of refused. Contracts are never truncated. The default per-document cap is
+  now 16 MiB.
+- **`unconfirmed` status.** One valid contract that declares the target host, but where provenance, operation, version
+  and product all failed to match, is `unconfirmed` (package present). Only `validated` outcomes should be treated as
+  settled; storage must handle both. Naming an endpoint usually turns an unconfirmed contract into a validated one.

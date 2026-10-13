@@ -17,7 +17,7 @@ class FetchLimits:
     connect_timeout: float = 3.0
     read_timeout: float = 5.0
     discovery_timeout: float = 90.0
-    max_document_bytes: int = 5 * 1024 * 1024
+    max_document_bytes: int = 16 * 1024 * 1024
     max_total_bytes: int = 32 * 1024 * 1024
     max_redirects: int = 3
     max_hosts: int = 8  # distinct host:port pairs one run may contact

@@ -37,6 +37,14 @@ from radar.discovery.viewer_config import (
 )
 from radar.domain.discovery import ArtifactFinding, ContractCandidate, DiscoveryRequest, LeadRecord, MatchingEvidence
 
+CONTEXT_PROBES = ('/openapi.json', '/openapi.yaml', '/swagger.json', '/api-docs.json')  # common filenames under a path prefix
+# Where the documentation of `api.example.com` usually lives. A guess: tried after the origin's own page, and a host
+# that does not exist is not evidence of anything.
+SIBLING_HOSTS = ('', 'developer', 'developers', 'docs')
+API_LABEL = re.compile(r'(?i)^(?:apis?\d*|rest|public|gateway|api-[\w-]+|[\w-]+-api|developer|developers|docs)$')
+DEEP_SEGMENTS = 5  # a path this deep is an individual reference page (an endpoint, a method), not an index
+TWO_LEVEL = frozenset({'co.uk', 'org.uk', 'ac.uk', 'gov.uk', 'com.au', 'net.au', 'org.au', 'co.nz', 'co.jp', 'co.in', 'com.br',
+                       'com.cn', 'co.za', 'com.mx', 'com.sg', 'co.kr'})
 FRAMEWORK_PROBES = ('/v3/api-docs', '/openapi/v1.json', '/swagger/v1/swagger.json', '/v2/api-docs')
 # Why navigation stopped completely, versus why one lead was skipped.
 STOP_ALL = frozenset({'request_limit', 'navigation_limit', 'deadline_exceeded', 'total_size_limit'})
@@ -46,7 +54,9 @@ UNEXAMINED = frozenset({'not_examined', 'skipped_depth', 'skipped_limit'})
 
 # Lead priorities: lower is examined first. Explicit publication beats navigation beats guessing.
 P_CATALOG, P_DESCRIPTION_TYPED, P_CATALOG_ITEM, P_DESCRIPTION_LINK, P_VIEWER_DESCRIPTION = 4, 5, 6, 6, 7
-P_VIEWER_CONFIG, P_SCRIPT, P_LLM, P_DOCUMENTATION_TYPED, P_ORIGIN_ROOT, P_NAVIGATION, P_PROBE = 8, 9, 12, 15, 20, 30, 90
+P_VIEWER_CONFIG, P_SCRIPT, P_SCRIPT_LITERAL, P_LLM, P_DOCUMENTATION_TYPED, P_ORIGIN_ROOT, P_SIBLING, P_NAVIGATION, P_PROBE = (
+    8, 9, 10, 12, 15, 20, 60, 30, 90)
+MAX_LITERALS_PER_SOURCE = 3  # spec-looking URLs followed from any one script or page
 
 
 @dataclass(frozen=True)
@@ -59,17 +69,25 @@ class NavigationLimits:
     max_catalogs: int = 4
     max_initializers_per_page: int = 2
     max_asset_bytes: int = 256 * 1024  # size cap for scripts and configuration files
-    max_probe_contexts: int = 2  # the origin root, plus at most one prefix taken from the target's own path
+    max_page_bytes: int = 1024 * 1024  # a larger page is read up to this many bytes (its head), not refused
+    max_deep_pages: int = 3  # navigation pages with a deep path (per-endpoint reference pages) fetched in one run
+    max_probe_contexts: int = 3  # the origin root, plus at most two prefixes taken from the target's own path
+    sibling_hosts: tuple[str, ...] = SIBLING_HOSTS  # label prefixes tried on the parent domain; '' is the domain itself
     framework_probes: tuple[str, ...] = FRAMEWORK_PROBES
+    context_probes: tuple[str, ...] = CONTEXT_PROBES
 
     def __post_init__(self):
         for name in ('max_pages', 'max_depth', 'max_links_per_page', 'max_leads', 'max_catalog_entries', 'max_catalogs',
-                     'max_initializers_per_page', 'max_asset_bytes', 'max_probe_contexts'):
+                     'max_initializers_per_page', 'max_asset_bytes', 'max_page_bytes', 'max_probe_contexts', 'max_deep_pages'):
             value = getattr(self, name)
             if type(value) is not int or value < (0 if name in ('max_links_per_page', 'max_initializers_per_page') else 1):
                 raise ValueError(f'Invalid {name}.')
-        if not isinstance(self.framework_probes, tuple) or not all(isinstance(p, str) and p.startswith('/') for p in self.framework_probes):
-            raise ValueError('Invalid framework_probes.')
+        if not isinstance(self.sibling_hosts, tuple) or not all(isinstance(h, str) and re.fullmatch(r'[a-z0-9-]*', h) for h in self.sibling_hosts):
+            raise ValueError('Invalid sibling_hosts.')
+        for name in ('framework_probes', 'context_probes'):
+            probes = getattr(self, name)
+            if not isinstance(probes, tuple) or not all(isinstance(p, str) and p.startswith('/') for p in probes):
+                raise ValueError(f'Invalid {name}.')
 
 
 @dataclass
@@ -108,6 +126,13 @@ def _key(url):
         return None
 
 
+def _is_deep(url):
+    try:
+        return len([p for p in urlsplit(url).path.split('/') if p]) >= DEEP_SEGMENTS
+    except ValueError:
+        return False
+
+
 def _host(url):
     try:
         parts = urlsplit(url)
@@ -133,6 +158,7 @@ class Navigator:
         self._pages, self._artifacts, self._trail, self._fetch_log = [], [], [], []
         self._limits_reached = []
         self._documents = 0
+        self._deep_pages = 0
         self._catalog_leads = 0
         self._catalog_entries = 0
         self._stopped = False
@@ -192,13 +218,29 @@ class Navigator:
         self.add(f'{self.origin}/.well-known/api-catalog', 'catalog', 'well_known_api_catalog', None, 0, P_CATALOG)
         if self.explore:
             self.add(f'{self.origin}/', 'page', 'origin_root', None, 0, P_ORIGIN_ROOT)
+            self._seed_siblings()
             self._seed_probes()
+
+    def _seed_siblings(self):
+        """The parent domain and its usual documentation hosts, for an API served from a host such as api.example.com."""
+        labels = (self.target.hostname or '').rstrip('.').split('.')
+        if len(labels) < 3 or not API_LABEL.match(labels[0]) or not all(re.fullmatch(r'[a-z0-9-]+', l) for l in labels):
+            return
+        keep = 3 if '.'.join(labels[-2:]) in TWO_LEVEL else 2
+        apex = '.'.join(labels[-keep:])
+        scheme = urlsplit(self.target.normalized_url).scheme
+        for index, prefix in enumerate(self.limits.sibling_hosts):
+            host = f'{prefix}.{apex}' if prefix else apex
+            if host != self.target.hostname:
+                self.add(f'{scheme}://{host}/', 'page', 'sibling_host', None, 0, P_SIBLING + index)
 
     def _seed_probes(self):
         segments = [s for s in urlsplit(self.target.normalized_url).path.split('/') if s]
-        contexts = [''] + ([f'/{segments[0]}'] if segments else [])  # a prefix only where the target's own path gives one
+        # prefixes only where the target's own path gives them: /a and /a/b
+        contexts = [''] + ['/' + '/'.join(segments[:n]) for n in (1, 2) if len(segments) >= n]
         for context in contexts[:self.limits.max_probe_contexts]:
-            for index, probe in enumerate(self.limits.framework_probes):
+            probes = self.limits.framework_probes + (self.limits.context_probes if context else ())
+            for index, probe in enumerate(probes):
                 self.add(f'{self.origin}{context}{probe}', 'description', 'framework_probe', None, 0, P_PROBE + index)
 
     # -- running ---------------------------------------------------------------------------------
@@ -225,7 +267,7 @@ class Navigator:
         """An optional soft pause preserves the queue for model-guided navigation."""
         while self._heap and not self._stopped:
             if pause_for_model and self._pages and (
-                self._heap[0][0] >= P_PROBE
+                self._heap[0][0] >= P_SIBLING  # before the first guess: sibling hosts, then framework probes
                 or self.budget.navigation_remaining() <= 6
                 or self._documents >= self.limits.max_pages - 2
             ):
@@ -238,6 +280,15 @@ class Navigator:
                 self._note_limit('page_limit')
                 self._trail_add(lead, 'skipped_limit')
                 continue
+            if lead.mechanism == 'documentation_navigation' and _is_deep(lead.url):
+                # Per-endpoint reference pages number in the hundreds and almost never name the specification;
+                # a few are read in case they do, the rest are left so the budget reaches other leads.
+                if self._deep_pages >= self.limits.max_deep_pages:
+                    self._note_limit('deep_page_limit')
+                    self._trail_add(lead, 'skipped_limit')
+                    self._visited.add(key)
+                    continue
+                self._deep_pages += 1
             self._visited.add(key)
             self._process(lead)
         if self._stopped:
@@ -249,7 +300,10 @@ class Navigator:
 
     def _process(self, lead: Lead):
         limit = self.limits.max_asset_bytes if lead.kind in ('script', 'config') else None
-        fetch = self._fetch(lead.url, limit)
+        if lead.kind in ('page', 'catalog'):
+            fetch = self._fetch(lead.url, self.limits.max_page_bytes, truncate=lead.kind == 'page')
+        else:
+            fetch = self._fetch(lead.url, limit)
         self._fetch_log.append((lead.mechanism, fetch))
         if not fetch.ok:
             code = fetch.failure.code
@@ -270,9 +324,9 @@ class Navigator:
         self._trail_add(lead, 'fetched')
         self._ingest(fetch, lead)
 
-    def _fetch(self, url, document_byte_limit):
+    def _fetch(self, url, document_byte_limit, truncate=False):
         return fetch_cached(url, self.budget, cache=self.cache, allow_loopback=self.allow_loopback,
-                            document_byte_limit=document_byte_limit)
+                            document_byte_limit=document_byte_limit, truncate=truncate)
 
     # -- reading what was fetched ------------------------------------------------------------------
     def _path_to(self, lead: Lead) -> str:
@@ -383,6 +437,13 @@ class Navigator:
             self.add(urljoin(base, config), 'config', 'swagger_config_url', fetch.final_url, depth, P_VIEWER_CONFIG, base)
         for spec in scan.embedded_specs:
             self._embedded(spec, fetch, lead)
+        # Anything else in the script that names a specification file: a weaker lead than a recognised
+        # configuration, still judged by validation and matching. Only the target's own hosts are followed: a script
+        # that lists many hosts' specifications (a shared viewer) must not attach their contracts to this target.
+        literals = [u for u in (urljoin(base, u) for u in scan.harvested_urls)
+                    if hosts_related(self.target.hostname, urlsplit(u).hostname or '')]
+        for url in literals[:MAX_LITERALS_PER_SOURCE]:
+            self.add(url, 'description', 'script_literal', fetch.final_url, depth, P_SCRIPT_LITERAL)
         if scan.unsupported:  # one finding per source, with every reason
             self._artifacts.append(ArtifactFinding(
                 'unsupported_dynamic_configuration', 'swagger_ui_configuration', fetch.final_url,
@@ -440,7 +501,8 @@ class Navigator:
             if score >= (MIN_CROSS_ORIGIN_SCORE if cross else MIN_SCORE):
                 scored.append((-score, len(scored), url))
         for negative_score, _, url in sorted(scored)[:self.limits.max_links_per_page]:
-            self.add(url, 'page', 'documentation_navigation', page_url, depth, P_NAVIGATION + negative_score)
+            self.add(url, 'page', 'documentation_navigation', page_url, depth,
+                     P_NAVIGATION + negative_score + (4 if _is_deep(url) else 0))
 
     # -- results ---------------------------------------------------------------------------------
     def take_candidates(self) -> tuple[RetrievedCandidate, ...]:

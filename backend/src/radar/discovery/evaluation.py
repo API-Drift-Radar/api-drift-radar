@@ -58,16 +58,20 @@ def _document_digest(parsed, raw: bytes) -> bytes:
         return hashlib.sha256(raw).digest()
 
 
-def package_fingerprint(package: ValidatedContractPackage) -> str:
+def package_fingerprint(package: ValidatedContractPackage, *, without_servers: bool = False) -> str:
     """Identity of a contract's content: the parsed root plus the parsed referenced files.
 
     The same contract served as JSON and as YAML, with different formatting or key order, has
     one fingerprint. It ignores where the contract was found, file names, and the order of
-    referenced documents. A candidate-level key for recognising duplicates, not storage's
+    referenced documents. `without_servers` drops the root's `servers` list, to recognise a
+    copy that only differs by leaving it empty (see `has_servers`). A candidate-level key for recognising duplicates, not storage's
     content address: the original bytes are still what gets stored.
     """
     digest = hashlib.sha256()
-    digest.update(_document_digest(package.parsed_contract, package.root_document.content))
+    root = package.parsed_contract
+    if without_servers and isinstance(root, dict) and 'servers' in root:
+        root = {key: value for key, value in root.items() if key != 'servers'}
+    digest.update(_document_digest(root, package.root_document.content))
     parts = []
     for document in package.referenced_documents:
         parsed = parse_document(document.content)
@@ -76,6 +80,11 @@ def package_fingerprint(package: ValidatedContractPackage) -> str:
     for part in sorted(parts):
         digest.update(part)
     return digest.hexdigest()
+
+
+def has_servers(package: ValidatedContractPackage) -> bool:
+    root = package.parsed_contract
+    return isinstance(root, dict) and bool(root.get('servers'))
 
 
 def _evidence(checks, source_url):

@@ -155,6 +155,18 @@
         "reason": "http_error: HTTP status 404."
       },
       {
+        "url": "https://api.apis.guru/v2/api.acme.com.json",
+        "stage": "directory_page",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.apis.guru/v2/acme.com.json",
+        "stage": "directory_page",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
         "url": "https://api.acme.com/.well-known/api-catalog",
         "stage": "navigation:well_known_api_catalog",
         "outcome": "retrieved",
@@ -169,6 +181,30 @@
       {
         "url": "https://api.acme.com/",
         "stage": "navigation:origin_root",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://acme.com/",
+        "stage": "navigation:sibling_host",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://developer.acme.com/",
+        "stage": "navigation:sibling_host",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://developers.acme.com/",
+        "stage": "navigation:sibling_host",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://docs.acme.com/",
+        "stage": "navigation:sibling_host",
         "outcome": "not_found",
         "reason": "http_error: HTTP status 404."
       },
@@ -238,6 +274,38 @@
         "outcome": "failed"
       },
       {
+        "url": "https://acme.com/",
+        "parent_url": null,
+        "mechanism": "sibling_host",
+        "kind": "page",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://developer.acme.com/",
+        "parent_url": null,
+        "mechanism": "sibling_host",
+        "kind": "page",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://developers.acme.com/",
+        "parent_url": null,
+        "mechanism": "sibling_host",
+        "kind": "page",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
+        "url": "https://docs.acme.com/",
+        "parent_url": null,
+        "mechanism": "sibling_host",
+        "kind": "page",
+        "depth": 0,
+        "outcome": "failed"
+      },
+      {
         "url": "https://api.acme.com/v3/api-docs",
         "parent_url": null,
         "mechanism": "framework_probe",
@@ -273,10 +341,10 @@
     "coverage": {
       "complete": true,
       "limits_reached": [],
-      "leads_examined": 7,
+      "leads_examined": 11,
       "leads_unexamined": 0,
       "unexamined": [],
-      "requests_used": 12,
+      "requests_used": 18,
       "requests_limit": 40,
       "reserved_for_references": 10,
       "hosts_contacted": []

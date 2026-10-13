@@ -97,6 +97,12 @@ def test_path_without_a_method_can_match_but_never_mismatches():
     assert result.outcome == INDETERMINATE and 'may not be an API endpoint' in result.description
 
 
+def test_versioned_or_base_path_without_a_method_that_is_missing_is_a_mismatch():
+    assert check('https://api.acme.com/v9/projects').outcome == MISMATCH
+    assert check('https://api.acme.com/2024-01-01/things').outcome == MISMATCH
+    assert check('https://api.acme.com/v1').outcome == INDETERMINATE  # a bare version is a base URL
+
+
 def test_no_endpoint_path():
     assert check('https://api.acme.com').outcome == NOT_REQUESTED
     assert check('https://api.acme.com/').outcome == NOT_REQUESTED

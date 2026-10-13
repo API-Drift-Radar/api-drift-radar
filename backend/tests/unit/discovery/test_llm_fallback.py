@@ -323,9 +323,11 @@ def test_model_runs_before_probes_exhaust_a_small_navigation_budget():
     from radar.discovery.limits import FetchLimits
     model = suggests()
     outcome, network = run({'/docs': DOCS, '/dl/9f3a': contract()}, model,
-                           limits=FetchLimits(max_requests=12))
+                           limits=FetchLimits(max_requests=12), use_directory=False)
     assert outcome.status is V and len(model.prompts) == 1
-    assert network.calls.index(SPEC_URL) < network.calls.index(HOST + '/v3/api-docs')
+    # The model's suggestion is fetched before any guess (sibling hosts, framework probes).
+    guesses = [i for i, c in enumerate(network.calls) if c.endswith(('/v3/api-docs', '/')) and c != HOST + '/']
+    assert all(network.calls.index(SPEC_URL) < i for i in guesses)
 
 
 def test_no_paid_consultation_when_request_budget_cannot_follow_suggestions():

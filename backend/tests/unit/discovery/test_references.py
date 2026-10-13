@@ -187,9 +187,9 @@ def test_data_keys_inside_list_items_are_skipped():
 
 
 def test_ref_siblings_and_nested_refs_are_all_scanned():
-    document = spec(a={'$ref': '#/b', 'x-more': {'$ref': '#/missing'}}, b={})
+    document = spec(a={'$ref': '#/b', 'description': {'$ref': '#/missing'}}, b={})
     scan = scan_references(document, BASE)
-    assert scan.failure_count == 1 and scan.rejection.location == '/a/x-more/$ref'
+    assert scan.failure_count == 1 and scan.rejection.location == '/a/description/$ref'
 
 
 def test_refs_in_lists_report_index_in_location():
@@ -202,8 +202,9 @@ def test_non_string_ref_values_and_properties_named_ref_are_ignored():
     assert scan_references(document, BASE).ok
 
 
-def test_extension_subtrees_are_scanned():
-    assert not scan_references(spec(**{'x-hooks': {'k': {'$ref': '#/missing'}}}), BASE).ok
+def test_extension_subtrees_are_not_scanned():
+    # Extensions are free-form; a `$ref` there is not an OpenAPI Reference Object (Spotify's x-spotify-policy).
+    assert scan_references(spec(**{'x-hooks': {'k': {'$ref': '#/missing'}}}), BASE).ok
 
 
 # --- scanning a subtree (used for fetched files) ----------------------------
@@ -300,3 +301,8 @@ def test_scan_never_raises_on_arbitrary_structures(document, start):
         return
     scan = scan_references(document, BASE, start=start)
     assert scan.ok == (scan.rejection is None)
+
+
+def test_references_inside_specification_extensions_are_ignored():
+    document = {'openapi': '3.0.0', 'paths': {'/a': {'get': {'x-policy': {'$ref': '#/components/x-missing/p'}}}}}
+    assert scan_references(document, 'https://a.example/openapi.json').ok

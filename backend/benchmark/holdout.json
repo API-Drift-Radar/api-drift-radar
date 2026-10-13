@@ -1,0 +1,242 @@
+{
+ "schema_version": 1,
+ "labels_by": "written before the run, from memory of each provider; unsure ones are marked optional; not audited",
+ "targets": [
+  {
+   "target": "https://api.haveibeenpwned.com",
+   "expect": "found",
+   "accept": [
+    "haveibeenpwned"
+   ],
+   "reject": [],
+   "note": "publishes swagger v3 on its main site"
+  },
+  {
+   "target": "https://catfact.ninja",
+   "expect": "found",
+   "accept": [
+    "catfact.ninja"
+   ],
+   "reject": [],
+   "note": "Swagger UI under /docs; spec at /docs/api-docs.json"
+  },
+  {
+   "target": "https://api.giphy.com",
+   "expect": "found",
+   "accept": [
+    "giphy"
+   ],
+   "reject": [],
+   "note": "in the directory"
+  },
+  {
+   "target": "https://api.zoom.us",
+   "expect": "found",
+   "accept": [
+    "zoom.us"
+   ],
+   "reject": [],
+   "note": "in the directory"
+  },
+  {
+   "target": "https://api.bitbucket.org",
+   "expect": "found",
+   "accept": [
+    "bitbucket"
+   ],
+   "reject": [],
+   "note": "in the directory"
+  },
+  {
+   "target": "https://api.pipedrive.com",
+   "expect": "found",
+   "accept": [
+    "pipedrive"
+   ],
+   "reject": [],
+   "note": "in the directory"
+  },
+  {
+   "target": "https://api.netlify.com",
+   "expect": "optional",
+   "accept": [
+    "netlify",
+    "netlify"
+   ],
+   "reject": [],
+   "note": "directory, Swagger 2 origin"
+  },
+  {
+   "target": "https://api.hubapi.com",
+   "expect": "optional",
+   "accept": [
+    "hubapi",
+    "hubapi"
+   ],
+   "reject": [],
+   "note": "unknown"
+  },
+  {
+   "target": "https://api.twitter.com",
+   "expect": "optional",
+   "accept": [
+    "twitter",
+    "twitter"
+   ],
+   "reject": [],
+   "note": "directory, old"
+  },
+  {
+   "target": "https://api.squareup.com",
+   "expect": "optional",
+   "accept": [
+    "squareup",
+    "squareup"
+   ],
+   "reject": [],
+   "note": "GitHub-hosted spec"
+  },
+  {
+   "target": "https://api.plaid.com",
+   "expect": "optional",
+   "accept": [
+    "plaid",
+    "plaid"
+   ],
+   "reject": [],
+   "note": "GitHub-hosted spec"
+  },
+  {
+   "target": "https://api.lob.com",
+   "expect": "optional",
+   "accept": [
+    "lob",
+    "lob"
+   ],
+   "reject": [],
+   "note": "directory"
+  },
+  {
+   "target": "https://api.stackexchange.com",
+   "expect": "optional",
+   "accept": [
+    "stackexchange",
+    "stackexchange"
+   ],
+   "reject": [],
+   "note": "directory"
+  },
+  {
+   "target": "https://gitlab.com",
+   "expect": "optional",
+   "accept": [
+    "gitlab",
+    "gitlab"
+   ],
+   "reject": [],
+   "note": "spec in a repo path"
+  },
+  {
+   "target": "https://api.open-meteo.com",
+   "expect": "optional",
+   "accept": [
+    "open-meteo",
+    "open-meteo"
+   ],
+   "reject": [],
+   "note": "docs on another host"
+  },
+  {
+   "target": "https://api.tfl.gov.uk",
+   "expect": "optional",
+   "accept": [
+    "tfl",
+    "tfl"
+   ],
+   "reject": [],
+   "note": "unknown"
+  },
+  {
+   "target": "https://api.chucknorris.io",
+   "expect": "optional",
+   "accept": [
+    "chucknorris",
+    "chucknorris"
+   ],
+   "reject": [],
+   "note": "unknown"
+  },
+  {
+   "target": "https://openlibrary.org",
+   "expect": "optional",
+   "accept": [
+    "openlibrary",
+    "openlibrary"
+   ],
+   "reject": [],
+   "note": "unknown"
+  },
+  {
+   "target": "https://api.carbonintensity.org.uk",
+   "expect": "optional",
+   "accept": [
+    "carbonintensity",
+    "carbonintensity"
+   ],
+   "reject": [],
+   "note": "unknown"
+  },
+  {
+   "target": "https://api.mailchimp.com",
+   "expect": "optional",
+   "accept": [
+    "mailchimp",
+    "mailchimp"
+   ],
+   "reject": [],
+   "note": "directory"
+  },
+  {
+   "target": "https://api.ipify.org",
+   "expect": "none",
+   "accept": [],
+   "reject": [],
+   "note": "no published OpenAPI contract known"
+  },
+  {
+   "target": "https://api.agify.io",
+   "expect": "none",
+   "accept": [],
+   "reject": [],
+   "note": "no published OpenAPI contract known"
+  },
+  {
+   "target": "https://api.zippopotam.us",
+   "expect": "none",
+   "accept": [],
+   "reject": [],
+   "note": "no published OpenAPI contract known"
+  },
+  {
+   "target": "https://opentdb.com",
+   "expect": "none",
+   "accept": [],
+   "reject": [],
+   "note": "no published OpenAPI contract known"
+  },
+  {
+   "target": "https://api.adviceslip.com",
+   "expect": "none",
+   "accept": [],
+   "reject": [],
+   "note": "no published OpenAPI contract known"
+  },
+  {
+   "target": "https://api.deezer.com",
+   "expect": "none",
+   "accept": [],
+   "reject": [],
+   "note": "no published OpenAPI contract known"
+  }
+ ]
+}

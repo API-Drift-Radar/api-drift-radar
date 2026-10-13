@@ -71,16 +71,18 @@ def search_common_locations(
                             limitations=SEARCH_LIMITATIONS, cache=cache)
 
 
-def fetch_cached(url, budget, *, cache, allow_loopback=False, document_byte_limit=None) -> FetchResult:
+def fetch_cached(url, budget, *, cache, allow_loopback=False, document_byte_limit=None, truncate=False) -> FetchResult:
     """The one place a discovery strategy fetches a URL: through the shared cache and budget.
 
     A cached result costs no budget. Results that only reflect an exhausted budget are never cached, so a later
     run with budget left can try again. `document_byte_limit` raises the size cap for this URL only.
     """
-    cache_key = (url, document_byte_limit)
+    cache_key = (url, document_byte_limit) if not truncate else (url, document_byte_limit, 'truncate')
     result = cache.get(cache_key)
     if result is None:
         extra = {'document_byte_limit': document_byte_limit} if document_byte_limit is not None else {}
+        if truncate:
+            extra['truncate'] = True
         result = fetch_document(url, budget, allow_loopback=allow_loopback, **extra)
         if result.ok or result.failure.code not in BUDGET_STOP_CODES:
             cache[cache_key] = result

@@ -106,7 +106,7 @@ def coverage_to_dict(coverage: Coverage | None) -> dict | None:
 
 
 def outcome_to_dict(outcome: DiscoveryOutcome) -> dict:
-    """status is one of validated, ambiguous, rejected, inaccessible, not_found.
+    """status is one of validated, unconfirmed, ambiguous, rejected, inaccessible, not_found.
 
     `package` is set only when validated; `alternatives` only when ambiguous (resolve with an
     explicit choice, no re-fetch needed). `candidates` lists every evaluated document, accepted or

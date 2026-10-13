@@ -43,6 +43,7 @@ class ViewerScan:
     config_urls: tuple[str, ...] = ()
     embedded_specs: tuple[bytes, ...] = ()
     unsupported: tuple[tuple[str, str], ...] = ()  # (code, detail)
+    harvested_urls: tuple[str, ...] = ()  # specification-looking URLs written anywhere in the script, as written
 
 
 def _json_object(raw):
@@ -51,6 +52,37 @@ def _json_object(raw):
     except (ValueError, RecursionError):
         return None
     return value if isinstance(value, dict) else None
+
+
+# A URL or path that names a specification file: a spec-like word in the file name, then .json/.yaml/.yml, or an
+# api-docs endpoint. Only the text is read; whatever it names is fetched and judged like any other candidate.
+# The text is split into tokens first and each token is checked with a simple anchored pattern, so the cost is
+# linear in the script size whatever it contains.
+_TOKEN = re.compile(r'[^\s\'"`,;<>()=\\]{1,300}')
+_SPEC_NAME = re.compile(
+    r'(?i)(?:[^/]*(?:openapi|swagger|api[-_]?docs?|apispec|spec|schema)[^/]*\.(?:json|ya?ml)|(?:openapi|swagger|api[-_]?docs?|apispec))'
+    r'(?:\?[\w=&.%-]{0,80})?')
+MAX_HARVESTED = 8
+
+
+def harvest_spec_urls(text: str) -> tuple[str, ...]:
+    """URLs or paths in script text that look like a specification file, in order of appearance, bounded.
+
+    Dynamic forms (template placeholders, concatenation) are skipped rather than guessed.
+    """
+    found = []
+    for match in _TOKEN.finditer(text[:MAX_INLINE_SCRIPT_CHARS]):
+        token = match.group(0)
+        if not (token.startswith(('http://', 'https://', '/', './', '../')) and not token.startswith('//')):
+            continue
+        if '${' in token or '{{' in token or '{' in token or '}' in token:
+            continue
+        name = token.split('?', 1)[0].rsplit('/', 1)[-1] + ('?' + token.split('?', 1)[1] if '?' in token else '')
+        if _SPEC_NAME.fullmatch(name) and name.count('.') <= 6 and token not in found:
+            found.append(token)
+            if len(found) >= MAX_HARVESTED:
+                break
+    return tuple(found)
 
 
 def scan_viewer_script(script: str) -> ViewerScan:
@@ -95,7 +127,10 @@ def scan_viewer_script(script: str) -> ViewerScan:
             refs.append(ViewerRef(reader.string(), 'redoc_config'))
         except _Unsupported:
             unsupported.append(('url_not_literal', 'Redoc.init is not given a static URL.'))
-    return ViewerScan(tuple(dict.fromkeys(refs)), tuple(dict.fromkeys(configs)), tuple(specs), tuple(dict.fromkeys(unsupported)))
+    named = {r.url for r in refs}
+    harvested = tuple(u for u in harvest_spec_urls(script) if u not in named)
+    return ViewerScan(tuple(dict.fromkeys(refs)), tuple(dict.fromkeys(configs)), tuple(specs),
+                      tuple(dict.fromkeys(unsupported)), harvested)
 
 
 def scan_swagger_config_json(content: bytes) -> ViewerScan | None:

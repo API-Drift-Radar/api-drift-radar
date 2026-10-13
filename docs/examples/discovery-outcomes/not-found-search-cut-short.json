@@ -40,6 +40,18 @@
         "reason": "http_error: HTTP status 404."
       },
       {
+        "url": "https://api.apis.guru/v2/api.acme.com.json",
+        "stage": "directory_page",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.apis.guru/v2/acme.com.json",
+        "stage": "directory_page",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
         "url": "https://api.acme.com/.well-known/api-catalog",
         "stage": "navigation:well_known_api_catalog",
         "outcome": "not_found",
@@ -54,25 +66,13 @@
       {
         "url": "https://api.acme.com/developers/0",
         "stage": "navigation:documentation_navigation",
-        "outcome": "not_found",
-        "reason": "http_error: HTTP status 404."
-      },
-      {
-        "url": "https://api.acme.com/developers/1",
-        "stage": "navigation:documentation_navigation",
-        "outcome": "not_found",
-        "reason": "http_error: HTTP status 404."
-      },
-      {
-        "url": "https://api.acme.com/developers/2",
-        "stage": "navigation:documentation_navigation",
         "outcome": "budget_exhausted",
         "reason": "navigation_limit: limit"
       }
     ],
     "limitations": [
       "Discovery is bounded: it tried provider mappings, common specification locations, documentation pages and links, and configuration they point to, within fixed request, time, size and host limits.",
-      "The search was cut short by its limits (navigation_limit); 7 location(s) were not visited, so other contracts may exist.",
+      "The search was cut short by its limits (navigation_limit); 13 location(s) were not visited, so other contracts may exist.",
       "Failing to find a contract is not proof that none is published."
     ],
     "artifacts": [],
@@ -107,7 +107,7 @@
         "mechanism": "documentation_navigation",
         "kind": "page",
         "depth": 1,
-        "outcome": "failed"
+        "outcome": "not_examined"
       },
       {
         "url": "https://api.acme.com/developers/2",
@@ -115,7 +115,7 @@
         "mechanism": "documentation_navigation",
         "kind": "page",
         "depth": 1,
-        "outcome": "failed"
+        "outcome": "not_examined"
       },
       {
         "url": "https://api.acme.com/developers/3",
@@ -139,6 +139,38 @@
         "mechanism": "documentation_navigation",
         "kind": "page",
         "depth": 1,
+        "outcome": "not_examined"
+      },
+      {
+        "url": "https://acme.com/",
+        "parent_url": null,
+        "mechanism": "sibling_host",
+        "kind": "page",
+        "depth": 0,
+        "outcome": "not_examined"
+      },
+      {
+        "url": "https://developer.acme.com/",
+        "parent_url": null,
+        "mechanism": "sibling_host",
+        "kind": "page",
+        "depth": 0,
+        "outcome": "not_examined"
+      },
+      {
+        "url": "https://developers.acme.com/",
+        "parent_url": null,
+        "mechanism": "sibling_host",
+        "kind": "page",
+        "depth": 0,
+        "outcome": "not_examined"
+      },
+      {
+        "url": "https://docs.acme.com/",
+        "parent_url": null,
+        "mechanism": "sibling_host",
+        "kind": "page",
+        "depth": 0,
         "outcome": "not_examined"
       },
       {
@@ -179,9 +211,25 @@
       "limits_reached": [
         "navigation_limit"
       ],
-      "leads_examined": 5,
-      "leads_unexamined": 7,
+      "leads_examined": 3,
+      "leads_unexamined": 13,
       "unexamined": [
+        {
+          "url": "https://api.acme.com/developers/1",
+          "parent_url": "https://api.acme.com/",
+          "mechanism": "documentation_navigation",
+          "kind": "page",
+          "depth": 1,
+          "outcome": "not_examined"
+        },
+        {
+          "url": "https://api.acme.com/developers/2",
+          "parent_url": "https://api.acme.com/",
+          "mechanism": "documentation_navigation",
+          "kind": "page",
+          "depth": 1,
+          "outcome": "not_examined"
+        },
         {
           "url": "https://api.acme.com/developers/3",
           "parent_url": "https://api.acme.com/",
@@ -207,31 +255,39 @@
           "outcome": "not_examined"
         },
         {
+          "url": "https://acme.com/",
+          "parent_url": null,
+          "mechanism": "sibling_host",
+          "kind": "page",
+          "depth": 0,
+          "outcome": "not_examined"
+        },
+        {
+          "url": "https://developer.acme.com/",
+          "parent_url": null,
+          "mechanism": "sibling_host",
+          "kind": "page",
+          "depth": 0,
+          "outcome": "not_examined"
+        },
+        {
+          "url": "https://developers.acme.com/",
+          "parent_url": null,
+          "mechanism": "sibling_host",
+          "kind": "page",
+          "depth": 0,
+          "outcome": "not_examined"
+        },
+        {
+          "url": "https://docs.acme.com/",
+          "parent_url": null,
+          "mechanism": "sibling_host",
+          "kind": "page",
+          "depth": 0,
+          "outcome": "not_examined"
+        },
+        {
           "url": "https://api.acme.com/v3/api-docs",
-          "parent_url": null,
-          "mechanism": "framework_probe",
-          "kind": "description",
-          "depth": 0,
-          "outcome": "not_examined"
-        },
-        {
-          "url": "https://api.acme.com/openapi/v1.json",
-          "parent_url": null,
-          "mechanism": "framework_probe",
-          "kind": "description",
-          "depth": 0,
-          "outcome": "not_examined"
-        },
-        {
-          "url": "https://api.acme.com/swagger/v1/swagger.json",
-          "parent_url": null,
-          "mechanism": "framework_probe",
-          "kind": "description",
-          "depth": 0,
-          "outcome": "not_examined"
-        },
-        {
-          "url": "https://api.acme.com/v2/api-docs",
           "parent_url": null,
           "mechanism": "framework_probe",
           "kind": "description",

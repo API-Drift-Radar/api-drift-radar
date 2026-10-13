@@ -9,15 +9,17 @@ retrieved document is judged on its own (validation, matching, reference capture
 the verdicts. It never picks between valid contracts, and a model never decides acceptance.
 """
 
+from urllib.parse import urlsplit
 from dataclasses import replace
 
 from radar.discovery.candidates import search_common_locations, search_direct_url
 from radar.discovery.documentation import search_documentation
-from radar.discovery.evaluation import evaluate_candidate, package_fingerprint
+from radar.discovery.evaluation import evaluate_candidate, has_servers, package_fingerprint
 from radar.discovery.fetch import FetchResult
 from radar.discovery.formats import recognize_artifact
 from radar.discovery.input import normalize_target
 from radar.discovery.limits import BUDGET_STOP_CODES, DiscoveryBudget, FetchLimits
+from radar.discovery.directory import search_directory
 from radar.discovery.llm_cost import CostLedger
 from radar.discovery.llm_fallback import search_llm_fallback
 from radar.discovery.llm_input import reduce_page
@@ -35,7 +37,6 @@ BUDGET_CODES = BUDGET_STOP_CODES
 # not a rejected contract; for a location a provider, a link or a configuration named explicitly, the same
 # response is a real rejection.
 NON_SPEC_CODES = frozenset({'html_document', 'empty_document', 'not_json_or_yaml', 'not_an_object', 'not_openapi'})
-GUESSED_METHODS = frozenset({'common_location', 'direct_url', 'framework_probe'})
 BOUNDED = ('Discovery is bounded: it tried provider mappings, common specification locations, documentation '
            'pages and links, and configuration they point to, within fixed request, time, size and host limits.')
 NOT_PROOF = 'Failing to find a contract is not proof that none is published.'
@@ -53,11 +54,45 @@ def _attempt(stage, fetch: FetchResult, ignorable_blocks=False):
         category, outcome = 'not_found', 'not_found'
     elif code == 'invalid_url':
         category, outcome = 'ignored', 'invalid_url'
+    elif stage.endswith('sibling_host'):
+        category, outcome = 'ignored', 'not_available'  # a guessed host that does not answer says nothing about the target
     elif code == 'blocked_destination' and ignorable_blocks:
         category, outcome = 'ignored', 'blocked'  # a link on an untrusted page pointed at a private address
     else:
         category, outcome = 'inaccessible', 'inaccessible'
     return DiscoveryAttempt(fetch.requested_url, stage, outcome, f'{code}: {fetch.failure.reason}'), category
+
+
+# Checks that tie a contract to the requested API. A host match alone does not: any third-party document can declare
+# a host, and a partial or stale description of the host's API declares it too.
+CONFIRMING = ('provenance', 'operation', 'api_version', 'product')
+UNCONFIRMED_NOTE = ('This contract declares the target host, but nothing confirms it is the complete, current contract '
+                    'of this API: it was reached through a link or a third-party index, and no requested operation, '
+                    'version or product matched. Confirm it (for example by naming an endpoint) before relying on it.')
+
+
+def _status_for(package):
+    confirmed = any(e.criterion in CONFIRMING and e.outcome == 'match' for e in package.candidate.evidence)
+    return DiscoveryStatus.VALIDATED if confirmed else DiscoveryStatus.UNCONFIRMED
+
+
+def _collapse_barriers(findings):
+    """One authentication finding per host and status: ten probes of one host answering 401 are one barrier."""
+    kept, seen, extra = [], {}, {}
+    for finding in findings:
+        if finding.category != 'authentication_required':
+            kept.append(finding)
+            continue
+        key = (urlsplit(finding.url).netloc, finding.status)
+        if key in seen:
+            extra[key] = extra.get(key, 0) + 1
+            continue
+        seen[key] = len(kept)
+        kept.append(finding)
+    for key, count in extra.items():
+        first = kept[seen[key]]
+        kept[seen[key]] = replace(first, detail=f'{first.detail} {count} other source(s) on {key[0]} answered HTTP {key[1]} too.')
+    return tuple(kept)
 
 
 def _mapping_for(retrieved, mappings):
@@ -69,8 +104,42 @@ def _mapping_for(retrieved, mappings):
 
 def _is_non_spec(candidate_method, evaluation):
     rejection = evaluation.rejection
-    return (candidate_method in GUESSED_METHODS and rejection is not None
+    return (candidate_method != 'provider_mapping' and rejection is not None
             and rejection.stage == 'validation' and rejection.code in NON_SPEC_CODES)
+
+
+
+def _record_accepted(accepted, evaluation, retrieved):
+    """Keep one evaluation per contract; a second route to the same contract is recorded as evidence.
+
+    A copy that leaves `servers` empty (the host implies it) is the same contract as one that
+    declares them; the declaring copy is kept.
+    """
+    fingerprint = package_fingerprint(evaluation.package)
+    key = fingerprint if fingerprint in accepted else None
+    if key is None:
+        loose = package_fingerprint(evaluation.package, without_servers=True)
+        key = next((k for k, other in accepted.items()
+                    if package_fingerprint(other.package, without_servers=True) == loose
+                    and not (has_servers(other.package) and has_servers(evaluation.package))), None)
+    if key is None:
+        accepted[fingerprint] = evaluation
+        return
+    first = accepted[key]
+    found_url, found_method = retrieved.retrieval.final_url, retrieved.candidate.discovery_method
+    if has_servers(evaluation.package) and not has_servers(first.package):
+        first, evaluation = evaluation, first  # keep the declaring copy
+        found_url, found_method = _location(evaluation)
+        del accepted[key]
+        key = fingerprint
+    also = MatchingEvidence('also_found', f'The same contract was also found at {found_url} via {found_method}.', found_url)
+    merged = replace(first.package.candidate, evidence=(*first.package.candidate.evidence, also))
+    accepted[key] = replace(first, candidate=merged, package=replace(first.package, candidate=merged))
+
+
+def _location(evaluation):
+    candidate = evaluation.package.candidate
+    return candidate.source_url, candidate.discovery_method
 
 
 def _llm_note(fallback, ledger, pages):
@@ -105,6 +174,7 @@ def discover(
     allow_loopback: bool = False,
     llm_suggester=None,
     llm_ledger: CostLedger | None = None,
+    use_directory: bool = True,
 ) -> DiscoveryOutcome:
     """Find, validate and match a published OpenAPI contract for `request`.
 
@@ -122,6 +192,9 @@ def discover(
     limits if omitted). The model chooses among links it was shown; they are fetched and judged like any other
     lead. The request's method is only a matching hint: discovery issues GET requests for documentation and
     metadata and never performs the named operation.
+
+    `use_directory` (default True) looks the target's provider up in the public APIs.guru directory when nothing
+    was accepted from the first strategies; its entries are leads that are validated and matched like any other.
     """
     target = normalize_target(request)
     budget = budget or DiscoveryBudget(limits)
@@ -165,16 +238,7 @@ def discover(
         evaluation = evaluate_candidate(retrieved, target, budget, mapping=mapping, validation_limits=validation_limits,
                                         capture_limits=capture_limits, allow_loopback=allow_loopback)
         if evaluation.accepted:
-            fingerprint = package_fingerprint(evaluation.package)
-            first = accepted.get(fingerprint)
-            if first is None:
-                accepted[fingerprint] = evaluation
-            else:  # the same contract found a second way: keep one, record where else it was seen
-                also = MatchingEvidence('also_found', f'The same contract was also found at {retrieved.retrieval.final_url} '
-                                        f'via {retrieved.candidate.discovery_method}.', retrieved.retrieval.final_url)
-                merged = replace(first.package.candidate, evidence=(*first.package.candidate.evidence, also))
-                accepted[fingerprint] = replace(first, candidate=merged,
-                                                package=replace(first.package, candidate=merged))
+            _record_accepted(accepted, evaluation, retrieved)
             return
         method = retrieved.candidate.discovery_method
         if _is_non_spec(method, evaluation):
@@ -217,6 +281,22 @@ def discover(
         # already fetched); the origin's own pages and framework-convention probes only when nothing is accepted.
         untrusted = {n.url for n in docs.notes if n.code == 'unconfigured_documentation_origin'}
         seed_pages = [d for d in docs.documents if d.ok and d.final_url not in untrusted]
+        if use_directory:
+            # Steps, each only if nothing was accepted so far: the provider's own sources; the directory's copies of
+            # them (a source that moved, is in an unsupported format, or references more files than the budget
+            # covers); then the provider's secondary entries. A minor entry never stands in for the main one.
+            first = True
+            for copies, scope in ((False, 'primary'), (True, 'primary'), (False, 'secondary'), (True, 'secondary')):
+                if accepted:
+                    break
+                step = search_directory(request, budget, copies=copies, scope=scope, **options)
+                record('directory', step.search, extra=step.index_fetches if first else ())
+                for retrieved in step.search.candidates:
+                    judge(retrieved, None)
+                if (first and not step.listed) or (copies and scope == 'primary' and not step.has_secondary):
+                    break
+                first = False
+
         navigator = Navigator(request, budget, limits=navigation_limits, allow_loopback=allow_loopback, cache=cache,
                               explore=not accepted)
 
@@ -279,7 +359,7 @@ def discover(
     if stops or skipped or nav_limits or unexamined:
         notes.append('The search was cut short by its limits (' + ', '.join(reached or ['unvisited locations']) + '); '
                      f'{len(skipped) + len(unexamined)} location(s) were not visited, so other contracts may exist.')
-    findings = tuple(dict.fromkeys(artifacts))
+    findings = _collapse_barriers(tuple(dict.fromkeys(artifacts)))
     documentation = {}
     for finding in findings:
         if finding.category == 'documentation_only':
@@ -293,7 +373,10 @@ def discover(
                      'not an OpenAPI contract and no supported contract was accepted from it.')
 
     if len(packages) == 1:
-        status, package = DiscoveryStatus.VALIDATED, packages[0]
+        package = packages[0]
+        status = _status_for(package)
+        if status is DiscoveryStatus.UNCONFIRMED:
+            notes.append(UNCONFIRMED_NOTE)
         notes.extend(package.limitations)
         packages = ()
     elif len(packages) > 1:
