@@ -1,0 +1,302 @@
+{
+ "schema_version": 1,
+ "labels_by": "the maintainer's own reading of each provider's published material; not independently audited. DEVELOPMENT SET: discovery was built and tuned against these targets, so its recall is a regression check, not an estimate. Use holdout.json.",
+ "targets": [
+  {
+   "target": "https://api.stripe.com",
+   "expect": "found",
+   "accept": [
+    "stripe/openapi"
+   ],
+   "reject": [],
+   "note": "provider mapping"
+  },
+  {
+   "target": "https://api.github.com",
+   "expect": "found",
+   "accept": [
+    "github/rest-api-description/main/descriptions/api.github.com/"
+   ],
+   "reject": [],
+   "note": "one entry per dated version: ambiguous is correct"
+  },
+  {
+   "target": "https://petstore3.swagger.io",
+   "expect": "found",
+   "accept": [
+    "petstore3.swagger.io/api/v3/openapi.json"
+   ],
+   "reject": [],
+   "note": "path named only in the viewer script"
+  },
+  {
+   "target": "https://petstore31.swagger.io",
+   "expect": "found",
+   "accept": [
+    "petstore31.swagger.io/api/v31/openapi.json"
+   ],
+   "reject": [],
+   "note": "same, OpenAPI 3.1"
+  },
+  {
+   "target": "https://api.weather.gov",
+   "expect": "found",
+   "accept": [
+    "api.weather.gov/openapi.json"
+   ],
+   "reject": [],
+   "note": "common location"
+  },
+  {
+   "target": "https://dev.to",
+   "expect": "found",
+   "accept": [
+    "dev.to/api/v1/openapi.json"
+   ],
+   "reject": [],
+   "note": "common location under a path"
+  },
+  {
+   "target": "https://fakerestapi.azurewebsites.net",
+   "expect": "found",
+   "accept": [
+    "fakerestapi.azurewebsites.net/swagger/v1/swagger.json"
+   ],
+   "reject": [],
+   "note": "framework probe"
+  },
+  {
+   "target": "https://api.apis.guru",
+   "expect": "found",
+   "accept": [
+    "api.apis.guru/v2/openapi.yaml"
+   ],
+   "reject": [],
+   "note": "directory"
+  },
+  {
+   "target": "https://api.twilio.com",
+   "expect": "found",
+   "accept": [
+    "twilio/twilio-oai/"
+   ],
+   "reject": [],
+   "note": "directory, provider source"
+  },
+  {
+   "target": "https://api.openai.com",
+   "expect": "found",
+   "accept": [
+    "openai/openai-openapi/"
+   ],
+   "reject": [],
+   "note": "directory, provider source"
+  },
+  {
+   "target": "https://api.sendgrid.com",
+   "expect": "found",
+   "accept": [
+    "api.apis.guru/v2/specs/sendgrid.com/",
+    "sendgrid/sendgrid-oai/"
+   ],
+   "reject": [],
+   "note": "directory; the provider source has moved, so the directory copy is used"
+  },
+  {
+   "target": "https://api.vercel.com",
+   "expect": "found",
+   "accept": [
+    "openapi.vercel.sh/"
+   ],
+   "reject": [
+    "marketplace-openapi"
+   ],
+   "note": "the full contract, not the marketplace subset"
+  },
+  {
+   "target": "https://api.box.com",
+   "expect": "found",
+   "accept": [
+    "api.apis.guru/v2/specs/box.com/",
+    "opensource.box.com/box-openapi/"
+   ],
+   "reject": [],
+   "note": "directory copy"
+  },
+  {
+   "target": "https://api.digitalocean.com",
+   "expect": "found",
+   "accept": [
+    "digitalocean/openapi/",
+    "api.apis.guru/v2/specs/digitalocean.com/"
+   ],
+   "reject": [],
+   "note": "source references hundreds of files; the single-file copy fits"
+  },
+  {
+   "target": "https://api.spotify.com",
+   "expect": "found",
+   "accept": [
+    "developer.spotify.com/reference/web-api/open-api-schema.yaml",
+    "apis.guru/v2/specs/spotify.com/"
+   ],
+   "reject": [
+    "sonallux"
+   ],
+   "note": "the official contract (or the directory copy of it); a third-party fork is wrong"
+  },
+  {
+   "target": "https://api.slack.com",
+   "expect": "found",
+   "accept": [
+    "slackapi/slack-api-specs/",
+    "api.apis.guru/v2/specs/slack.com/"
+   ],
+   "reject": [
+    "ai-plugin"
+   ],
+   "note": "the Web API contract, not the AI plugin manifest"
+  },
+  {
+   "target": "https://httpbin.org",
+   "expect": "found",
+   "accept": [
+    "api.apis.guru/v2/specs/httpbin.org/",
+    "httpbin.org/spec.json"
+   ],
+   "reject": [],
+   "note": "the origin publishes Swagger 2 only; the directory copy is OpenAPI 3"
+  },
+  {
+   "target": "https://api.nasa.gov",
+   "expect": "optional",
+   "accept": [
+    "api.apis.guru/v2/specs/nasa.gov/",
+    "nasa/api-docs/"
+   ],
+   "reject": [],
+   "note": "partial: the directory lists individual NASA APIs, none is the whole contract; any result is acceptable only if it is a NASA one"
+  },
+  {
+   "target": "https://api.cloudflare.com",
+   "expect": "found",
+   "accept": [
+    "cloudflare/api-schemas/"
+   ],
+   "reject": [],
+   "note": "KNOWN GAP: published in a GitHub repository nothing links to"
+  },
+  {
+   "target": "https://api.pagerduty.com",
+   "expect": "found",
+   "accept": [
+    "PagerDuty/api-schema/"
+   ],
+   "reject": [],
+   "note": "KNOWN GAP: published in a GitHub repository; the API host answers 401"
+  },
+  {
+   "target": "https://petstore3.swagger.io/api/v3/openapi.json",
+   "expect": "found",
+   "accept": [
+    "petstore3.swagger.io/api/v3/openapi.json"
+   ],
+   "reject": [],
+   "note": "direct URL"
+  },
+  {
+   "target": "https://petstore.swagger.io",
+   "expect": "optional",
+   "accept": [
+    "petstore.swagger.io/"
+   ],
+   "reject": [],
+   "note": "Swagger 2 at the origin"
+  },
+  {
+   "target": "https://api.nytimes.com",
+   "expect": "optional",
+   "accept": [
+    "api.apis.guru/v2/specs/nytimes.com/"
+   ],
+   "reject": [],
+   "note": "several Swagger 2 descriptions"
+  },
+  {
+   "target": "https://api.mailgun.net",
+   "expect": "optional",
+   "accept": [
+    "mailgun.com/",
+    "mailgun.net/",
+    "mailgun/"
+   ],
+   "reject": [],
+   "note": "unknown"
+  },
+  {
+   "target": "https://api.anthropic.com",
+   "expect": "optional",
+   "accept": [
+    "anthropic.com/",
+    "anthropics/"
+   ],
+   "reject": [],
+   "note": "unknown"
+  },
+  {
+   "target": "https://api.shopify.com",
+   "expect": "optional",
+   "accept": [
+    "shopify.com/",
+    "Shopify/"
+   ],
+   "reject": [],
+   "note": "unknown"
+  },
+  {
+   "target": "https://api.heroku.com",
+   "expect": "optional",
+   "accept": [
+    "heroku.com/",
+    "heroku/"
+   ],
+   "reject": [],
+   "note": "JSON Schema, not OpenAPI"
+  },
+  {
+   "target": "https://example.com",
+   "expect": "none",
+   "accept": [],
+   "reject": [],
+   "note": "no API"
+  },
+  {
+   "target": "https://example.org",
+   "expect": "none",
+   "accept": [],
+   "reject": [],
+   "note": "no API"
+  },
+  {
+   "target": "https://jsonplaceholder.typicode.com",
+   "expect": "none",
+   "accept": [],
+   "reject": [],
+   "note": "no published contract"
+  },
+  {
+   "target": "https://api.discogs.com",
+   "expect": "none",
+   "accept": [],
+   "reject": [],
+   "note": "no published OpenAPI contract"
+  },
+  {
+   "target": "https://developer.atlassian.com",
+   "expect": "none",
+   "accept": [],
+   "reject": [],
+   "note": "a documentation host; the contracts declare other hosts"
+  }
+ ]
+}

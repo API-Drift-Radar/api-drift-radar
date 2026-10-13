@@ -20,7 +20,16 @@ The repository has been reorganized into one Python backend package and a separa
 
 **Milestone 2 — Contract discovery and monitoring: current development focus.**
 
-Discovery, monitoring, HTTP API, shared domain models, and frontend directories are scaffolded. Published OpenAPI comparison, SQLite persistence, scheduling, and the web interface are not implemented yet. There is no running HTTP API or dashboard at this stage.
+Discovery (`radar.discovery.orchestrator.discover`) is implemented and tested; monitoring, the HTTP API, the frontend, OpenAPI comparison and SQLite persistence are not. There is no running HTTP API or dashboard yet.
+
+What discovery does, within shared request, time, size and host limits:
+
+- Normalizes a URL or host, then searches in order: a target that is itself a specification URL, provider mappings (Stripe and GitHub are bundled), common specification locations, documentation pages, the public APIs.guru directory, and navigation (typed links, an RFC 9727 catalogue, Swagger/Redoc viewer configuration, sibling documentation hosts, framework probes).
+- Validates OpenAPI 3.0/3.1 documents (bounded; YAML nesting is checked before parsing), captures `$ref` references, and matches the contract to the target by explicit, evidenced rules.
+- Returns one of six statuses: `validated`, `unconfirmed`, `ambiguous`, `rejected`, `inaccessible`, `not_found`. `unconfirmed` means a contract declares the target host but nothing confirms it is complete and current (for example a directory copy); it must not be used to raise drift alerts. Each package records whether it came from the provider or a directory copy (`source_kind`).
+- Reports unsupported formats, documentation-only data, authentication barriers and search coverage as optional details. An optional, default-off language-model fallback with a cost ledger and hard spending limits is available.
+
+Sample outcomes for the API and frontend owners are in `docs/examples/discovery-outcomes/`; see `docs/component-interfaces.md` for interfaces and status.
 
 ## Try the current CLI
 
@@ -110,7 +119,7 @@ api-drift-radar/
 ├── backend/
 │   ├── pyproject.toml          # Python dependencies and CLI entry point
 │   ├── src/radar/
-│   │   ├── discovery/          # Published contract discovery scaffold
+│   │   ├── discovery/          # Normalization, bounded fetching, candidate search, fallback input reduction
 │   │   ├── comparison/         # Existing JSON structure engine
 │   │   ├── storage/            # Existing baseline and atomic file utilities
 │   │   ├── monitoring/         # Check workflow and scheduling scaffold
@@ -119,7 +128,7 @@ api-drift-radar/
 │   │   ├── domain/             # Shared domain model scaffold
 │   │   └── config.py           # Runtime path configuration
 │   ├── migrations/             # Future SQLite migrations
-│   └── tests/                  # Unit tests; integration and fixture scaffolds
+│   └── tests/                  # Unit tests and local fetcher integration tests
 ├── web/
 │   ├── package.json            # Placeholder; no build scripts yet
 │   ├── src/
@@ -136,15 +145,34 @@ api-drift-radar/
 
 The planned monitoring database is `.radar/radar.db`; it will be created when database initialization is implemented. Contract artifacts will live under `.radar/contracts/`.
 
+## Discovery search budget
+
+Discovery defaults to 40 requests over 90 seconds, reserving 10 requests for
+contract references. Navigation can inspect 16 pages/assets across up to 8 hosts,
+with a page depth of 4. The optional LLM now helps before speculative probes or
+navigation exhaustion, using only observed, unexplored links. Calls are skipped
+when there is insufficient capacity to follow suggestions. Enable it explicitly
+with `python -m radar.discovery TARGET --llm`; the existing two-call limit and
+$5 cumulative discovery cap still apply. Deterministic discovery needs no model.
+
 ## Development and verification
 
-Run the existing backend tests and doctests from the repository root:
+Run the backend tests and doctests from the repository root:
 
 ```sh
 python -m pytest -c backend/pyproject.toml backend/tests backend/src
 ```
 
-The current tests cover structural comparison, arrays, CLI behavior, JSON fetching, baseline validation, and atomic writes. They do not certify the future contract-monitoring workflow. Integration and acceptance directories are placeholders for that work.
+The suite (about 1,380 tests) covers structural comparison and the CLI, and for discovery: input normalization, bounded fetching, validation, matching (including a labeled corpus), candidate search, the directory, sibling hosts and navigation, `unconfirmed` handling, the orchestrator end to end, and the sample outcome files. Network access is faked or goes to a local HTTP server; no live provider is needed. Supported Python is 3.10 or later; the suite is expected to pass on all three platforms and these versions. CI runs the suite on Linux, Windows and macOS with Python 3.10, 3.12 and 3.14 (`.github/workflows/tests.yml`).
+
+The live accuracy benchmark is separate and needs the network (no model, no cost):
+
+```sh
+python -m radar.discovery.benchmark                                   # development set
+python -m radar.discovery.benchmark --targets backend/benchmark/holdout.json
+```
+
+Report recall for `validated` and `unconfirmed` separately; the development set was used while building discovery, so only the holdout is an unbiased figure. These tests do not certify the future contract-monitoring workflow. Full-system acceptance tests remain unimplemented.
 
 `.env.example` documents the optional `RADAR_DATA_DIR` setting for monitoring paths. Environment files are not loaded automatically; export variables in your shell. The existing CLI's default baseline path remains unchanged.
 
