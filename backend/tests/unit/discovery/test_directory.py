@@ -60,6 +60,10 @@ def test_provider_keys_walk_up_the_host_but_never_to_a_bare_suffix():
     assert provider_keys('api.twilio.com') == ('api.twilio.com', 'twilio.com')
     assert provider_keys('twilio.com') == ('twilio.com',)
     assert provider_keys('a.b.c.example.org') == ('a.b.c.example.org', 'b.c.example.org', 'c.example.org')
+    assert provider_keys('api.acme.co.uk') == ('api.acme.co.uk', 'acme.co.uk')  # never the bare suffix co.uk
+    assert provider_keys('co.uk') == () and provider_keys('com') == ()
+    assert provider_keys('httpbin.org') == ('httpbin.org',)  # itself on the private part of the list: still a provider
+    assert provider_keys('someone.github.io') == ('someone.github.io',)
     assert provider_keys('localhost') == () and provider_keys('127.0.0.1') == () and provider_keys('') == ()
 
 
@@ -191,3 +195,21 @@ def test_many_authentication_barriers_on_one_host_are_one_finding():
     other = ArtifactFinding('authentication_required', 'authentication', 'https://docs.acme.com/x', 'd', 'x', None, 403)
     collapsed = _collapse_barriers(findings + (other,))
     assert len(collapsed) == 2 and '9 other source(s) on api.acme.com answered HTTP 401' in collapsed[0].detail
+
+
+def test_the_package_records_whether_the_contract_came_from_the_provider_or_a_directory_copy():
+    own, _ = run({INDEX: listing(**{'acme.com': entry()}), ORIGIN: contract()})
+    copy, _ = run({INDEX: listing(**{'acme.com': entry(origin=None)}), COPY: contract()})
+    assert own.package.candidate.source_kind == 'provider'
+    assert copy.package.candidate.source_kind == 'directory_copy'
+
+
+def test_an_unconfirmed_outcome_never_allows_drift_alerts():
+    outcome, _ = run({INDEX: listing(**{'acme.com': entry()}), ORIGIN: contract()})
+    assert outcome.status is DiscoveryStatus.UNCONFIRMED and outcome.drift_alerts_allowed is False
+
+
+def test_a_specification_url_that_fails_to_load_triggers_no_framework_probes():
+    _, network = run({}, target='https://api.acme.com/v1/openapi.json')
+    assert network.calls[0] == 'https://api.acme.com/v1/openapi.json'
+    assert not any(url.endswith(('/v3/api-docs', '/v2/api-docs', '/swagger/v1/swagger.json')) for url in network.calls)

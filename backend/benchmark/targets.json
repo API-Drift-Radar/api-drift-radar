@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "labels_by": "the maintainer's own reading of each provider's published material; not independently audited",
+ "labels_by": "the maintainer's own reading of each provider's published material; not independently audited. DEVELOPMENT SET: discovery was built and tuned against these targets, so its recall is a regression check, not an estimate. Use holdout.json.",
  "targets": [
   {
    "target": "https://api.stripe.com",
@@ -15,7 +15,7 @@
    "target": "https://api.github.com",
    "expect": "found",
    "accept": [
-    "rest-api-description"
+    "github/rest-api-description/main/descriptions/api.github.com/"
    ],
    "reject": [],
    "note": "one entry per dated version: ambiguous is correct"
@@ -60,7 +60,7 @@
    "target": "https://fakerestapi.azurewebsites.net",
    "expect": "found",
    "accept": [
-    "swagger/v1/swagger.json"
+    "fakerestapi.azurewebsites.net/swagger/v1/swagger.json"
    ],
    "reject": [],
    "note": "framework probe"
@@ -69,7 +69,7 @@
    "target": "https://api.apis.guru",
    "expect": "found",
    "accept": [
-    "apis.guru"
+    "api.apis.guru/v2/openapi.yaml"
    ],
    "reject": [],
    "note": "directory"
@@ -78,7 +78,7 @@
    "target": "https://api.twilio.com",
    "expect": "found",
    "accept": [
-    "twilio-oai"
+    "twilio/twilio-oai/"
    ],
    "reject": [],
    "note": "directory, provider source"
@@ -87,7 +87,7 @@
    "target": "https://api.openai.com",
    "expect": "found",
    "accept": [
-    "openai-openapi"
+    "openai/openai-openapi/"
    ],
    "reject": [],
    "note": "directory, provider source"
@@ -96,7 +96,8 @@
    "target": "https://api.sendgrid.com",
    "expect": "found",
    "accept": [
-    "sendgrid"
+    "api.apis.guru/v2/specs/sendgrid.com/",
+    "sendgrid/sendgrid-oai/"
    ],
    "reject": [],
    "note": "directory; the provider source has moved, so the directory copy is used"
@@ -116,7 +117,8 @@
    "target": "https://api.box.com",
    "expect": "found",
    "accept": [
-    "box.com"
+    "api.apis.guru/v2/specs/box.com/",
+    "opensource.box.com/box-openapi/"
    ],
    "reject": [],
    "note": "directory copy"
@@ -125,8 +127,8 @@
    "target": "https://api.digitalocean.com",
    "expect": "found",
    "accept": [
-    "digitalocean",
-    "apis.guru/v2/specs/digitalocean.com"
+    "digitalocean/openapi/",
+    "api.apis.guru/v2/specs/digitalocean.com/"
    ],
    "reject": [],
    "note": "source references hundreds of files; the single-file copy fits"
@@ -147,8 +149,8 @@
    "target": "https://api.slack.com",
    "expect": "found",
    "accept": [
-    "slack-api-specs",
-    "apis.guru/v2/specs/slack.com"
+    "slackapi/slack-api-specs/",
+    "api.apis.guru/v2/specs/slack.com/"
    ],
    "reject": [
     "ai-plugin"
@@ -159,25 +161,27 @@
    "target": "https://httpbin.org",
    "expect": "found",
    "accept": [
-    "httpbin"
+    "api.apis.guru/v2/specs/httpbin.org/",
+    "httpbin.org/spec.json"
    ],
    "reject": [],
    "note": "the origin publishes Swagger 2 only; the directory copy is OpenAPI 3"
   },
   {
    "target": "https://api.nasa.gov",
-   "expect": "found",
+   "expect": "optional",
    "accept": [
-    "nasa.gov"
+    "api.apis.guru/v2/specs/nasa.gov/",
+    "nasa/api-docs/"
    ],
    "reject": [],
-   "note": "partial: the directory lists individual NASA APIs"
+   "note": "partial: the directory lists individual NASA APIs, none is the whole contract; any result is acceptable only if it is a NASA one"
   },
   {
    "target": "https://api.cloudflare.com",
    "expect": "found",
    "accept": [
-    "cloudflare"
+    "cloudflare/api-schemas/"
    ],
    "reject": [],
    "note": "KNOWN GAP: published in a GitHub repository nothing links to"
@@ -186,7 +190,7 @@
    "target": "https://api.pagerduty.com",
    "expect": "found",
    "accept": [
-    "pagerduty"
+    "PagerDuty/api-schema/"
    ],
    "reject": [],
    "note": "KNOWN GAP: published in a GitHub repository; the API host answers 401"
@@ -204,7 +208,7 @@
    "target": "https://petstore.swagger.io",
    "expect": "optional",
    "accept": [
-    "petstore"
+    "petstore.swagger.io/"
    ],
    "reject": [],
    "note": "Swagger 2 at the origin"
@@ -213,7 +217,7 @@
    "target": "https://api.nytimes.com",
    "expect": "optional",
    "accept": [
-    "nytimes"
+    "api.apis.guru/v2/specs/nytimes.com/"
    ],
    "reject": [],
    "note": "several Swagger 2 descriptions"
@@ -222,7 +226,9 @@
    "target": "https://api.mailgun.net",
    "expect": "optional",
    "accept": [
-    "mailgun"
+    "mailgun.com/",
+    "mailgun.net/",
+    "mailgun/"
    ],
    "reject": [],
    "note": "unknown"
@@ -231,7 +237,8 @@
    "target": "https://api.anthropic.com",
    "expect": "optional",
    "accept": [
-    "anthropic"
+    "anthropic.com/",
+    "anthropics/"
    ],
    "reject": [],
    "note": "unknown"
@@ -240,7 +247,8 @@
    "target": "https://api.shopify.com",
    "expect": "optional",
    "accept": [
-    "shopify"
+    "shopify.com/",
+    "Shopify/"
    ],
    "reject": [],
    "note": "unknown"
@@ -249,7 +257,8 @@
    "target": "https://api.heroku.com",
    "expect": "optional",
    "accept": [
-    "heroku"
+    "heroku.com/",
+    "heroku/"
    ],
    "reject": [],
    "note": "JSON Schema, not OpenAPI"

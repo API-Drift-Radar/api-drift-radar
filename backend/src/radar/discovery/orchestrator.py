@@ -12,7 +12,7 @@ the verdicts. It never picks between valid contracts, and a model never decides 
 from urllib.parse import urlsplit
 from dataclasses import replace
 
-from radar.discovery.candidates import search_common_locations, search_direct_url
+from radar.discovery.candidates import looks_like_spec_url, search_common_locations, search_direct_url
 from radar.discovery.documentation import search_documentation
 from radar.discovery.evaluation import evaluate_candidate, has_servers, package_fingerprint
 from radar.discovery.fetch import FetchResult
@@ -298,7 +298,8 @@ def discover(
                 first = False
 
         navigator = Navigator(request, budget, limits=navigation_limits, allow_loopback=allow_loopback, cache=cache,
-                              explore=not accepted)
+                              explore=not accepted,
+                              probe=not looks_like_spec_url(target))
 
         def run_navigation(*, pause_for_model=False):
             navigator.run(pause_for_model=pause_for_model)

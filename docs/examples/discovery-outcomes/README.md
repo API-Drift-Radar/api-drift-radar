@@ -15,6 +15,7 @@ and review the diff. Each file is `{ description, request, outcome }`.
 | `validated-direct-url.json` | validated | The target was a specification URL; fetched directly, nothing else searched |
 | `validated-with-referenced-documents.json` | validated | A multi-file contract; each referenced file listed with size and SHA-256 |
 | `validated-provider-version-selected.json` | validated | A version hint selected one of two provider versions; the other is a rejected candidate |
+| `unconfirmed-via-directory.json` | unconfirmed | Found only through the APIs.guru directory; declares the target host but nothing confirms it is complete and current |
 | `ambiguous-two-contracts.json` | ambiguous | Two distinct contracts in `alternatives`; nothing chosen |
 | `ambiguous-swagger-config-versions.json` | ambiguous | A Swagger initializer led to a configuration listing two versions |
 | `ambiguous-provider-versions.json` | ambiguous | Dated provider versions with no version requested |
@@ -30,9 +31,11 @@ and review the diff. Each file is `{ description, request, outcome }`.
 
 ## Reading an outcome
 
-- `status`: `validated`, `ambiguous`, `rejected`, `inaccessible` or `not_found`. Treat these as the
+- `status`: `validated`, `unconfirmed`, `ambiguous`, `rejected`, `inaccessible` or `not_found`. Treat these as the
   distinct result states of a screen; "no result yet" (loading) is a client state, not an outcome.
-- `package`: present only when `validated`. Describes the contract; it never contains the contract text.
+- `package`: present only when `validated` or `unconfirmed`. An `unconfirmed` contract matches the target host but nothing
+  confirms it is the provider's complete, current contract (for example a directory copy); it carries a limitation saying
+  so and must not be used to raise drift alerts. Describes the contract; it never contains the contract text.
   `root_document` and `referenced_documents` give URL, `media_type`, `size_bytes`, `sha256` and
   `retrieved_at`. `content_fingerprint` identifies the contract's content independent of formatting or
   JSON/YAML form. The bytes themselves belong to the snapshot endpoint, not this payload.

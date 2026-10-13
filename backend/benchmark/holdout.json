@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "labels_by": "written before the run, from memory of each provider; unsure ones are marked optional; not audited",
+ "labels_by": "written before the run; unsure ones are marked optional; not audited. HOLDOUT: not used to tune discovery. The 'found' targets added last were picked from the APIs.guru list, so they measure directory coverage only.",
  "targets": [
   {
    "target": "https://api.haveibeenpwned.com",
@@ -60,7 +60,6 @@
    "target": "https://api.netlify.com",
    "expect": "optional",
    "accept": [
-    "netlify",
     "netlify"
    ],
    "reject": [],
@@ -70,7 +69,6 @@
    "target": "https://api.hubapi.com",
    "expect": "optional",
    "accept": [
-    "hubapi",
     "hubapi"
    ],
    "reject": [],
@@ -80,7 +78,6 @@
    "target": "https://api.twitter.com",
    "expect": "optional",
    "accept": [
-    "twitter",
     "twitter"
    ],
    "reject": [],
@@ -90,7 +87,6 @@
    "target": "https://api.squareup.com",
    "expect": "optional",
    "accept": [
-    "squareup",
     "squareup"
    ],
    "reject": [],
@@ -100,7 +96,6 @@
    "target": "https://api.plaid.com",
    "expect": "optional",
    "accept": [
-    "plaid",
     "plaid"
    ],
    "reject": [],
@@ -110,7 +105,6 @@
    "target": "https://api.lob.com",
    "expect": "optional",
    "accept": [
-    "lob",
     "lob"
    ],
    "reject": [],
@@ -120,7 +114,6 @@
    "target": "https://api.stackexchange.com",
    "expect": "optional",
    "accept": [
-    "stackexchange",
     "stackexchange"
    ],
    "reject": [],
@@ -130,7 +123,6 @@
    "target": "https://gitlab.com",
    "expect": "optional",
    "accept": [
-    "gitlab",
     "gitlab"
    ],
    "reject": [],
@@ -140,7 +132,6 @@
    "target": "https://api.open-meteo.com",
    "expect": "optional",
    "accept": [
-    "open-meteo",
     "open-meteo"
    ],
    "reject": [],
@@ -150,7 +141,6 @@
    "target": "https://api.tfl.gov.uk",
    "expect": "optional",
    "accept": [
-    "tfl",
     "tfl"
    ],
    "reject": [],
@@ -160,7 +150,6 @@
    "target": "https://api.chucknorris.io",
    "expect": "optional",
    "accept": [
-    "chucknorris",
     "chucknorris"
    ],
    "reject": [],
@@ -170,7 +159,6 @@
    "target": "https://openlibrary.org",
    "expect": "optional",
    "accept": [
-    "openlibrary",
     "openlibrary"
    ],
    "reject": [],
@@ -180,7 +168,6 @@
    "target": "https://api.carbonintensity.org.uk",
    "expect": "optional",
    "accept": [
-    "carbonintensity",
     "carbonintensity"
    ],
    "reject": [],
@@ -190,7 +177,6 @@
    "target": "https://api.mailchimp.com",
    "expect": "optional",
    "accept": [
-    "mailchimp",
     "mailchimp"
    ],
    "reject": [],
@@ -233,6 +219,86 @@
   },
   {
    "target": "https://api.deezer.com",
+   "expect": "none",
+   "accept": [],
+   "reject": [],
+   "note": "no published OpenAPI contract known"
+  },
+  {
+   "target": "https://api.bunq.com",
+   "expect": "found",
+   "accept": [
+    "api.apis.guru/v2/specs/bunq.com/",
+    "bunq/doc/"
+   ],
+   "reject": [],
+   "note": "chosen from the APIs.guru list before running: measures directory coverage, not general recall"
+  },
+  {
+   "target": "https://api.shutterstock.com",
+   "expect": "found",
+   "accept": [
+    "api.apis.guru/v2/specs/shutterstock.com/",
+    "api-explorer.shutterstock.com/"
+   ],
+   "reject": [],
+   "note": "chosen from the APIs.guru list before running"
+  },
+  {
+   "target": "https://api.linode.com",
+   "expect": "found",
+   "accept": [
+    "api.apis.guru/v2/specs/linode.com/",
+    "linode.com/docs/api/"
+   ],
+   "reject": [],
+   "note": "chosen from the APIs.guru list before running"
+  },
+  {
+   "target": "https://api.clever.com",
+   "expect": "found",
+   "accept": [
+    "api.apis.guru/v2/specs/clever.com/",
+    "Clever/swagger-api/"
+   ],
+   "reject": [],
+   "note": "chosen from the APIs.guru list before running"
+  },
+  {
+   "target": "https://api.video",
+   "expect": "found",
+   "accept": [
+    "api.apis.guru/v2/specs/api.video/",
+    "docs.api.video/"
+   ],
+   "reject": [],
+   "note": "chosen from the APIs.guru list before running"
+  },
+  {
+   "target": "https://pokeapi.co",
+   "expect": "optional",
+   "accept": [
+    "pokeapi"
+   ],
+   "reject": [],
+   "note": "spec lives in a repository; unsure"
+  },
+  {
+   "target": "https://swapi.dev",
+   "expect": "none",
+   "accept": [],
+   "reject": [],
+   "note": "no published OpenAPI contract known"
+  },
+  {
+   "target": "https://dog.ceo",
+   "expect": "none",
+   "accept": [],
+   "reject": [],
+   "note": "no published OpenAPI contract known"
+  },
+  {
+   "target": "https://api.kanye.rest",
    "expect": "none",
    "accept": [],
    "reject": [],

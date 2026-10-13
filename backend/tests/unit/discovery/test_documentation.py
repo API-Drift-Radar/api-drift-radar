@@ -168,9 +168,15 @@ def test_failed_fetch_produces_nothing():
 
 
 @pytest.mark.parametrize('html', ['', '<<<>>>', '<a href="/openapi.json">', '<script>SwaggerUI(', '<a><a href="x">',
-                                  '<script>' + 'SwaggerUI({' * 5000 + '</script>'])
+                                  '<script>' + 'SwaggerUI({' * 5000 + '</script>'],
+                         ids=['empty', 'angle-brackets', 'unclosed-anchor', 'unclosed-call', 'nested-anchor', 'deep-script'])
 def test_malformed_html_never_raises(html):
     extract(html)
+
+
+def test_unclosed_script_still_yields_its_config():
+    html = '<script>SwaggerUIBundle({url: "/openapi.json"})'
+    assert extract(html)[0] == [('https://api.acme.com/openapi.json', 'swagger_ui_config')]
 
 
 def test_deeply_nested_literal_does_not_crash():

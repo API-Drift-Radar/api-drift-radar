@@ -6,10 +6,12 @@
   },
   "outcome": {
     "status": "validated",
+    "drift_alerts_allowed": true,
     "package": {
       "source_url": "https://api.acme.com/openapi.json",
       "discovery_method": "common_location",
       "discovery_source": "https://api.acme.com/openapi.json",
+      "source_kind": "provider",
       "content_fingerprint": "9630265182fe73a77886245b2835ebc542bb655c3a97de29a9ab26253b7730d2",
       "openapi_version": "3.0.3",
       "title": "Acme Pets API",
@@ -71,6 +73,7 @@
         "source_url": "https://api.acme.com/openapi.json",
         "discovery_method": "common_location",
         "discovery_source": "https://api.acme.com/openapi.json",
+        "source_kind": "provider",
         "accepted": true,
         "rejections": [],
         "evidence": [

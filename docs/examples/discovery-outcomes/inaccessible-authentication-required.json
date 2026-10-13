@@ -5,6 +5,7 @@
   },
   "outcome": {
     "status": "inaccessible",
+    "drift_alerts_allowed": false,
     "package": null,
     "alternatives": [],
     "candidates": [],

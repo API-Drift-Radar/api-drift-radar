@@ -11,7 +11,11 @@ Each target carries an expectation:
   none      no public contract exists; any returned package is a false positive.
 `reject` lists source URLs that are wrong for the target even though they validate (a partial or unrelated contract).
 
-Recall is measured on `found` targets. Precision is measured on every returned package. Both are reported with
+Recall is measured on `found` targets and is reported twice: `recall_validated` counts only `validated` outcomes (the ones
+a monitor may act on); `recall` also counts `unconfirmed` ones, which are right but not settled. Quote the first.
+`targets.json` is the development set: its notes name the feature built for each target, so it is tuned on and its recall
+is a regression check, not an estimate. `holdout.json` was labeled before the run and is the only unbiased figure; read
+it with its size (`found_targets`) beside it. Precision is measured on every returned package. Both are reported with
 the labels' limits: they are the maintainer's reading of each provider's published material, not an audit, and the
 live providers change.
 """
@@ -70,14 +74,17 @@ def summarize(verdicts) -> dict:
     returned = [v for v in verdicts if v.returned_package]
     correct = [v for v in returned if v.outcome in ('hit', 'ambiguous_hit')]
     wrong = [v for v in verdicts if v.outcome in ('false_positive', 'wrong_alternative')]
+    unconfirmed = sum(1 for v in hits if v.status == DiscoveryStatus.UNCONFIRMED.value)
     return {
         'targets': len(verdicts), 'found_targets': len(found), 'hits': len(hits),
-        'recall': round(len(hits) / len(found), 3) if found else None,
+        'recall': round(len(hits) / len(found), 3) if found else None,  # validated and unconfirmed hits together
+        'validated_hits': len(hits) - unconfirmed,
+        'recall_validated': round((len(hits) - unconfirmed) / len(found), 3) if found else None,
         'packages_returned': len(returned), 'packages_correct': len(correct),
         'precision': round(len(correct) / len(returned), 3) if returned else None,
         'false_positives': [v.target for v in wrong],
         'misses': [v.target for v in found if v.outcome == 'miss'],
-        'unconfirmed_hits': sum(1 for v in hits if v.status == DiscoveryStatus.UNCONFIRMED.value),
+        'unconfirmed_hits': unconfirmed,
     }
 
 

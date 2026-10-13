@@ -807,3 +807,11 @@ treat the numbers as a regression baseline, not a general estimate.
 - **`unconfirmed` status.** One valid contract that declares the target host, but where provenance, operation, version
   and product all failed to match, is `unconfirmed` (package present). Only `validated` outcomes should be treated as
   settled; storage must handle both. Naming an endpoint usually turns an unconfirmed contract into a validated one.
+  `outcome.drift_alerts_allowed` is false for `unconfirmed`: a difference from a partial, stale or foreign contract is
+  not drift. Every candidate and package also carries `source_kind`, `provider` (the provider's own host, source or
+  documentation) or `directory_copy` (a copy kept by a third-party index, possibly older than the provider's current
+  contract). Whether a *validated* `directory_copy` should raise alerts is for monitoring (#10) to decide.
+- **Public suffixes.** Directory lookups, host relations and sibling-host guesses use the Public Suffix List
+  (`radar.discovery.suffix`, from the `publicsuffixlist` package), so `co.uk` or `github.io` never relate hosts.
+- **Direct specification URLs.** If a target that names a specification file fails to load, guessed framework paths are
+  not probed on its host (other locations are still searched, since the path may be an API endpoint).

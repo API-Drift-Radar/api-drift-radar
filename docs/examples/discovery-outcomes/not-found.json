@@ -5,6 +5,7 @@
   },
   "outcome": {
     "status": "not_found",
+    "drift_alerts_allowed": false,
     "package": null,
     "alternatives": [],
     "candidates": [],

@@ -64,6 +64,13 @@ class ContractCandidate:
     evidence: tuple[MatchingEvidence, ...] = ()
     rejection_reasons: tuple[str, ...] = ()
     limitations: tuple[str, ...] = ()
+    # `provider`: the provider's own host, source or documentation. `directory_copy`: a copy kept by a third-party
+    # directory, which may be older than what the provider currently publishes.
+    source_kind: str = "provider"
+
+    def __post_init__(self):
+        if self.source_kind not in ("provider", "directory_copy"):
+            raise ValueError("source_kind must be 'provider' or 'directory_copy'.")
 
 
 @dataclass(frozen=True)
@@ -143,6 +150,16 @@ class DiscoveryOutcome:
     artifacts: tuple[ArtifactFinding, ...] = ()  # optional detail: unsupported or documentation-only findings, barriers
     trail: tuple[LeadRecord, ...] = ()  # optional detail: the navigation steps, each with its parent and mechanism
     coverage: Coverage | None = None  # optional detail: how complete the bounded search was
+
+    @property
+    def drift_alerts_allowed(self) -> bool:
+        """Only a validated contract may be diffed against live traffic.
+
+        An unconfirmed one may be partial, stale or another API's, so a difference from it is not drift. Whether a
+        validated contract from a `directory_copy` should alert is for the monitoring side to decide: see
+        `package.candidate.source_kind`.
+        """
+        return self.status is DiscoveryStatus.VALIDATED
 
     def __post_init__(self):
         if not isinstance(self.status, DiscoveryStatus):

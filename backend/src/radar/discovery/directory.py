@@ -17,6 +17,7 @@ import re
 from radar.discovery.candidates import CandidateSearchResult, fetch_candidates
 from radar.discovery.input import normalize_target
 from radar.discovery.limits import DiscoveryBudget
+from radar.discovery.suffix import is_icann_suffix, registrable_domain
 from radar.domain.discovery import ContractCandidate, DiscoveryRequest, MatchingEvidence
 
 DIRECTORY_BASE = 'https://api.apis.guru/v2'
@@ -39,11 +40,17 @@ _LABEL = re.compile(r'[a-z0-9-]+')
 
 
 def provider_keys(hostname: str) -> tuple[str, ...]:
-    """Directory provider names to try for a host: `api.twilio.com` -> `api.twilio.com`, `twilio.com`."""
-    labels = (hostname or '').rstrip('.').lower().split('.')
-    if len(labels) < 2 or not all(_LABEL.fullmatch(label) for label in labels) or labels[-1].isdigit():
+    """Directory provider names to try for a host: `api.twilio.com` -> `api.twilio.com`, `twilio.com`.
+
+    The walk stops at the registrable domain, so `api.acme.co.uk` never looks up `co.uk`.
+    A host that is itself a private suffix (`github.io`) is looked up as itself only."""
+    host = (hostname or '').rstrip('.').lower()
+    labels = host.split('.')
+    if len(labels) < 2 or not all(_LABEL.fullmatch(label) for label in labels) or labels[-1].isdigit() or is_icann_suffix(host):
         return ()
-    return tuple('.'.join(labels[i:]) for i in range(0, len(labels) - 1))[:MAX_KEYS]
+    registrable = registrable_domain(host) or host  # a private suffix such as httpbin.org is still a provider itself
+    depth = len(labels) - len(registrable.split('.'))  # labels above the registrable domain; never a bare suffix
+    return tuple('.'.join(labels[i:]) for i in range(0, depth + 1))[:MAX_KEYS]
 
 
 def _quote(url):
@@ -122,7 +129,7 @@ def search_directory(request: DiscoveryRequest, budget: DiscoveryBudget, *, allo
                     'directory',
                     f'The APIs.guru directory lists {entry_id!r} ({title!r}, version {version!r}) for provider {key}, '
                     f'at {where}. This is a hint: the entry has not been verified against the document.', index_url),),
-                limitations=LIMITATIONS))
+                limitations=LIMITATIONS, source_kind='provider' if is_origin else 'directory_copy'))
         if entries:
             break  # the most specific provider key that has a listing is the one used
     search = fetch_candidates(target, locations, budget, allow_loopback=allow_loopback, limitations=LIMITATIONS,

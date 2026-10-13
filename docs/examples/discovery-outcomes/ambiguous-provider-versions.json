@@ -5,12 +5,14 @@
   },
   "outcome": {
     "status": "ambiguous",
+    "drift_alerts_allowed": false,
     "package": null,
     "alternatives": [
       {
         "source_url": "https://specs.acme.com/2022-11-28.json",
         "discovery_method": "provider_mapping",
         "discovery_source": "https://github.com/acme/openapi",
+        "source_kind": "provider",
         "content_fingerprint": "9630265182fe73a77886245b2835ebc542bb655c3a97de29a9ab26253b7730d2",
         "openapi_version": "3.0.3",
         "title": "Acme Pets API",
@@ -76,6 +78,7 @@
         "source_url": "https://specs.acme.com/2026-03-10.json",
         "discovery_method": "provider_mapping",
         "discovery_source": "https://github.com/acme/openapi",
+        "source_kind": "provider",
         "content_fingerprint": "d6f5ecaf98ad05f3b09a388b1f1e43ce73919db70bb8111a43b08ff52507e595",
         "openapi_version": "3.0.3",
         "title": "Acme Pets API",
@@ -143,6 +146,7 @@
         "source_url": "https://specs.acme.com/2022-11-28.json",
         "discovery_method": "provider_mapping",
         "discovery_source": "https://github.com/acme/openapi",
+        "source_kind": "provider",
         "accepted": true,
         "rejections": [],
         "evidence": [
@@ -193,6 +197,7 @@
         "source_url": "https://specs.acme.com/2026-03-10.json",
         "discovery_method": "provider_mapping",
         "discovery_source": "https://github.com/acme/openapi",
+        "source_kind": "provider",
         "accepted": true,
         "rejections": [],
         "evidence": [

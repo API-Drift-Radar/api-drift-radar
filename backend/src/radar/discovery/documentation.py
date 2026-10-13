@@ -85,6 +85,16 @@ class _PageParser(HTMLParser):
             self.scripts.append(''.join(self.script))
             self.script = None
 
+    def close(self):
+        super().close()
+        if self.script is not None:
+            # Pages are cut at a byte limit, so a script may be unclosed. Older html.parser releases drop its
+            # text on close() and leave it in rawdata; newer ones flush it through handle_data.
+            self.script.append(self.rawdata)
+            self.rawdata = ''
+            self.scripts.append(''.join(self.script))
+            self.script = None
+
 
 class _Unsupported(Exception):
     """The configuration is not a static literal this parser understands."""

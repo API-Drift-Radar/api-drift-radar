@@ -26,6 +26,7 @@ def check(servers, text='api.acme.com', **document):
     ('api.acme.com', 'acme.com', 'target_under_server'),
     ('acme.com', 'api.acme.com', 'server_under_target'),
     ('eu.api.acme.com', 'acme.com', 'target_under_server'),
+    ('api.acme.co.uk', 'acme.co.uk', 'target_under_server'),
     ('münchen.example', 'xn--mnchen-3ya.example', 'same'),
     ('api.münchen.example', 'münchen.example', 'target_under_server'),
     ('127.0.0.1', '127.0.0.1', 'same'),
@@ -42,6 +43,8 @@ def test_related_hosts(target_host, server_host, expected):
     ('acme.com', 'evilacme.com'),
     ('acme.com.evil.test', 'acme.com'),
     ('com', 'acme.com'), ('acme.com', 'com'),  # single-label side never relates
+    ('co.uk', 'acme.co.uk'), ('api.acme.co.uk', 'co.uk'),  # a public suffix never relates hosts beneath it
+    ('github.io', 'someone.github.io'), ('someone.github.io', 'github.io'),
     ('localhost', 'a.localhost'), ('a.localhost', 'localhost'),
     ('127.0.0.1', '127.0.0.2'), ('127.0.0.1', 'acme.com'), ('10.0.0.1', '0.0.0.1'),
     ('acme.com', ''), ('', 'acme.com'), ('acme.com', 'bad host'), ('acme.com', 'a..com'), ('acme.com', None),

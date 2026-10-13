@@ -13,6 +13,7 @@ import re
 from typing import Any, Mapping
 from urllib.parse import unquote, urlsplit
 
+from radar.discovery.suffix import is_public_suffix
 from radar.discovery.validation import ContractSummary, ValidationRejection, ValidationResult
 from radar.domain.discovery import NormalizedTarget
 
@@ -62,9 +63,8 @@ def hosts_related(target_host: str, server_host: str) -> str | None:
     """How a server host relates to the target host, or None.
 
     Equal hosts, or one a DNS-label-boundary subdomain of the other. The shorter side
-    needs at least two labels so that `com` or `localhost` never relate hosts. IP
-    addresses relate only when equal. No public-suffix list is used, so a shared
-    suffix such as `github.io` as a target relates to every host beneath it.
+    must be a registrable domain, not a public suffix, so `com`, `co.uk` or `github.io`
+    never relate hosts. IP addresses relate only when equal.
     """
     target, server = _normalize_host(target_host), _normalize_host(server_host)
     if target is None or server is None:
@@ -73,9 +73,9 @@ def hosts_related(target_host: str, server_host: str) -> str | None:
         return SAME if target == server else None
     if target == server:
         return SAME
-    if target.endswith('.' + server) and server.count('.') >= 1:
+    if target.endswith('.' + server) and not is_public_suffix(server):
         return TARGET_UNDER_SERVER
-    if server.endswith('.' + target) and target.count('.') >= 1:
+    if server.endswith('.' + target) and not is_public_suffix(target):
         return SERVER_UNDER_TARGET
     return None
 

@@ -6,6 +6,7 @@
   },
   "outcome": {
     "status": "rejected",
+    "drift_alerts_allowed": false,
     "package": null,
     "alternatives": [],
     "candidates": [
@@ -13,6 +14,7 @@
         "source_url": "https://api.acme.com/openapi.json",
         "discovery_method": "common_location",
         "discovery_source": "https://api.acme.com/openapi.json",
+        "source_kind": "provider",
         "accepted": false,
         "rejections": [
           {
@@ -61,6 +63,7 @@
         "source_url": "https://api.acme.com/openapi.yaml",
         "discovery_method": "common_location",
         "discovery_source": "https://api.acme.com/openapi.yaml",
+        "source_kind": "provider",
         "accepted": false,
         "rejections": [
           {
@@ -109,6 +112,7 @@
         "source_url": "https://api.acme.com/swagger.json",
         "discovery_method": "common_location",
         "discovery_source": "https://api.acme.com/swagger.json",
+        "source_kind": "provider",
         "accepted": false,
         "rejections": [
           {

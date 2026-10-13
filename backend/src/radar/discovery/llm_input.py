@@ -145,6 +145,9 @@ class _Collector(HTMLParser):
         super().close()
         self._flush_anchor()
         if self._script is not None:
+            # Older html.parser releases drop unclosed <script> text on close() and leave it in rawdata.
+            self._script.append(self.rawdata)
+            self.rawdata = ''
             self.entries.append(('script', ''.join(self._script)))
             self._script = None
 

@@ -5,12 +5,14 @@
   },
   "outcome": {
     "status": "ambiguous",
+    "drift_alerts_allowed": false,
     "package": null,
     "alternatives": [
       {
         "source_url": "https://api.acme.com/openapi.json",
         "discovery_method": "common_location",
         "discovery_source": "https://api.acme.com/openapi.json",
+        "source_kind": "provider",
         "content_fingerprint": "9630265182fe73a77886245b2835ebc542bb655c3a97de29a9ab26253b7730d2",
         "openapi_version": "3.0.3",
         "title": "Acme Pets API",
@@ -70,6 +72,7 @@
         "source_url": "https://api.acme.com/swagger.json",
         "discovery_method": "common_location",
         "discovery_source": "https://api.acme.com/swagger.json",
+        "source_kind": "provider",
         "content_fingerprint": "acc4762578cfec88fa6c9db7d46f82c96f98bfa19bcebd482652c4e04f543a78",
         "openapi_version": "3.0.3",
         "title": "Acme Admin API",
@@ -131,6 +134,7 @@
         "source_url": "https://api.acme.com/openapi.json",
         "discovery_method": "common_location",
         "discovery_source": "https://api.acme.com/openapi.json",
+        "source_kind": "provider",
         "accepted": true,
         "rejections": [],
         "evidence": [
@@ -175,6 +179,7 @@
         "source_url": "https://api.acme.com/swagger.json",
         "discovery_method": "common_location",
         "discovery_source": "https://api.acme.com/swagger.json",
+        "source_kind": "provider",
         "accepted": true,
         "rejections": [],
         "evidence": [

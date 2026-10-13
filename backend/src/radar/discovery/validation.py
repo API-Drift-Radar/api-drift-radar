@@ -128,6 +128,9 @@ def _key_text(key):
     raise _Rejected('invalid_structure', 'Mapping keys must be scalars.')
 
 
+_YAML_BASE = getattr(yaml, 'CSafeLoader', yaml.SafeLoader)
+
+
 def _yaml_loader():
     """YAML 1.2-style core scalars on top of the safe loader.
 
@@ -135,7 +138,7 @@ def _yaml_loader():
     date and `1:30` is a number. OpenAPI documents are JSON-compatible, so those
     would silently turn strings (including `info.version`) into other types.
     """
-    base = getattr(yaml, 'CSafeLoader', yaml.SafeLoader)
+    base = _YAML_BASE
     drop = {'tag:yaml.org,2002:bool', 'tag:yaml.org,2002:int', 'tag:yaml.org,2002:float',
             'tag:yaml.org,2002:timestamp'}
 
@@ -172,6 +175,22 @@ def _yaml_loader():
 _YAML_LOADER = _yaml_loader()
 
 
+def _check_yaml_depth(text, limits):
+    """Reject deep nesting from the event stream, before anything recursive (composer, constructor) runs.
+
+    The scanner and parser are iterative, so this is linear and cannot overflow the stack; the composer is
+    recursive and segfaults (libyaml build) or aborts (pure Python, Windows) on tens of thousands of levels.
+    """
+    depth = 0
+    for event in yaml.parse(text, Loader=_YAML_BASE):
+        if isinstance(event, (yaml.SequenceStartEvent, yaml.MappingStartEvent)):
+            depth += 1
+            if depth > limits.max_depth + 1:
+                raise _Rejected('nesting_limit_exceeded', f'Nesting exceeds {limits.max_depth} levels.')
+        elif isinstance(event, (yaml.SequenceEndEvent, yaml.MappingEndEvent)):
+            depth -= 1
+
+
 def _parse(content, limits):
     if not content or not content.strip():
         raise _Rejected('empty_document', 'The document is empty.')
@@ -194,6 +213,7 @@ def _parse(content, limits):
     try:
         if start[0] in '{[':
             return json.loads(text, object_pairs_hook=_json_pairs, parse_constant=_reject_constant)
+        _check_yaml_depth(text, limits)
         return yaml.load(text, Loader=_YAML_LOADER)  # noqa: S506 - restricted safe loader subclass
     except _Rejected:
         raise

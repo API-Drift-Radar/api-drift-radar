@@ -20,7 +20,16 @@ The repository has been reorganized into one Python backend package and a separa
 
 **Milestone 2 — Contract discovery and monitoring: current development focus.**
 
-Discovery now has input normalization, shared result models, a bounded HTTP document fetcher, common-location candidate search, and an explicit provider-mapping registry with controlled-server tests. The bundled registry has verified entries for Stripe and GitHub; further entries are added only after official-source verification. A pure page-reduction step for an optional LLM link-suggestion fallback exists (no model is called). Documentation-link extraction and OpenAPI 3.0/3.1 document validation (bounded, with stage-tagged rejection reasons) are implemented and unit-tested. Reference capture (internal verification and bounded external-file capture) is implemented. Relevance matching, candidate evaluation and the discovery orchestrator (`radar.discovery.orchestrator.discover`) are implemented; 35 end-to-end acceptance scenarios (including a target that is itself a specification URL) over local HTTP and a 39-case labeled matching corpus pass. Generated sample outcome JSON for the API and frontend owners is in `docs/examples/discovery-outcomes/`. Discovery also follows typed links, an RFC 9727 catalogue, documentation navigation, Swagger/Redoc viewer configuration and framework probes within shared limits, and reports unsupported formats, documentation-only data (apiDoc), authentication barriers and search coverage as optional details; see docs/component-interfaces.md. An optional, default-off language-model fallback (Merge Gateway) with a persistent per-call cost ledger and hard spending limits is implemented; see docs/component-interfaces.md. See docs/component-interfaces.md for status and the resume plan. Monitoring, HTTP API, and frontend directories remain scaffolded. Published OpenAPI comparison, SQLite persistence, scheduling, and the web interface are not implemented yet. There is no running HTTP API or dashboard at this stage.
+Discovery (`radar.discovery.orchestrator.discover`) is implemented and tested; monitoring, the HTTP API, the frontend, OpenAPI comparison and SQLite persistence are not. There is no running HTTP API or dashboard yet.
+
+What discovery does, within shared request, time, size and host limits:
+
+- Normalizes a URL or host, then searches in order: a target that is itself a specification URL, provider mappings (Stripe and GitHub are bundled), common specification locations, documentation pages, the public APIs.guru directory, and navigation (typed links, an RFC 9727 catalogue, Swagger/Redoc viewer configuration, sibling documentation hosts, framework probes).
+- Validates OpenAPI 3.0/3.1 documents (bounded; YAML nesting is checked before parsing), captures `$ref` references, and matches the contract to the target by explicit, evidenced rules.
+- Returns one of six statuses: `validated`, `unconfirmed`, `ambiguous`, `rejected`, `inaccessible`, `not_found`. `unconfirmed` means a contract declares the target host but nothing confirms it is complete and current (for example a directory copy); it must not be used to raise drift alerts. Each package records whether it came from the provider or a directory copy (`source_kind`).
+- Reports unsupported formats, documentation-only data, authentication barriers and search coverage as optional details. An optional, default-off language-model fallback with a cost ledger and hard spending limits is available.
+
+Sample outcomes for the API and frontend owners are in `docs/examples/discovery-outcomes/`; see `docs/component-interfaces.md` for interfaces and status.
 
 ## Try the current CLI
 
@@ -148,13 +157,22 @@ $5 cumulative discovery cap still apply. Deterministic discovery needs no model.
 
 ## Development and verification
 
-Run the existing backend tests and doctests from the repository root:
+Run the backend tests and doctests from the repository root:
 
 ```sh
 python -m pytest -c backend/pyproject.toml backend/tests backend/src
 ```
 
-The current tests cover structural comparison, arrays, CLI behavior, JSON fetching, baseline validation, atomic writes, discovery input normalization, bounded document fetching, and common-location candidate search. Fetcher integration tests use a local HTTP server; no live provider is required. These tests do not certify the future contract-monitoring workflow. Full-system acceptance tests remain unimplemented.
+The suite (about 1,380 tests) covers structural comparison and the CLI, and for discovery: input normalization, bounded fetching, validation, matching (including a labeled corpus), candidate search, the directory, sibling hosts and navigation, `unconfirmed` handling, the orchestrator end to end, and the sample outcome files. Network access is faked or goes to a local HTTP server; no live provider is needed. Supported Python is 3.10 or later; the suite is expected to pass on all three platforms and these versions. CI runs the suite on Linux, Windows and macOS with Python 3.10, 3.12 and 3.14 (`.github/workflows/tests.yml`).
+
+The live accuracy benchmark is separate and needs the network (no model, no cost):
+
+```sh
+python -m radar.discovery.benchmark                                   # development set
+python -m radar.discovery.benchmark --targets backend/benchmark/holdout.json
+```
+
+Report recall for `validated` and `unconfirmed` separately; the development set was used while building discovery, so only the holdout is an unbiased figure. These tests do not certify the future contract-monitoring workflow. Full-system acceptance tests remain unimplemented.
 
 `.env.example` documents the optional `RADAR_DATA_DIR` setting for monitoring paths. Environment files are not loaded automatically; export variables in your shell. The existing CLI's default baseline path remains unchanged.
 

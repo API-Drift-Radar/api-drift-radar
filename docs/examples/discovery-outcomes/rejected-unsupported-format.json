@@ -5,6 +5,7 @@
   },
   "outcome": {
     "status": "rejected",
+    "drift_alerts_allowed": false,
     "package": null,
     "alternatives": [],
     "candidates": [
@@ -12,6 +13,7 @@
         "source_url": "https://api.acme.com/openapi.json",
         "discovery_method": "common_location",
         "discovery_source": "https://api.acme.com/openapi.json",
+        "source_kind": "provider",
         "accepted": false,
         "rejections": [
           {

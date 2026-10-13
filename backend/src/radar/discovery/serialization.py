@@ -48,6 +48,7 @@ def candidate_to_dict(candidate: ContractCandidate) -> dict:
         'source_url': candidate.source_url,
         'discovery_method': candidate.discovery_method,
         'discovery_source': candidate.discovery_source,
+        'source_kind': candidate.source_kind,
         'accepted': not candidate.rejection_reasons,
         'rejections': [rejection_from_text(r) for r in candidate.rejection_reasons],
         'evidence': [evidence_to_dict(e) for e in candidate.evidence],
@@ -66,6 +67,7 @@ def package_to_dict(package: ValidatedContractPackage) -> dict:
         'source_url': package.candidate.source_url,
         'discovery_method': package.candidate.discovery_method,
         'discovery_source': package.candidate.discovery_source,
+        'source_kind': package.candidate.source_kind,
         'content_fingerprint': package_fingerprint(package),
         'openapi_version': package.openapi_version,
         'title': info.get('title'),
@@ -108,7 +110,7 @@ def coverage_to_dict(coverage: Coverage | None) -> dict | None:
 def outcome_to_dict(outcome: DiscoveryOutcome) -> dict:
     """status is one of validated, unconfirmed, ambiguous, rejected, inaccessible, not_found.
 
-    `package` is set only when validated; `alternatives` only when ambiguous (resolve with an
+    `package` is set only when validated or unconfirmed (`drift_alerts_allowed` is false for unconfirmed); `alternatives` only when ambiguous (resolve with an
     explicit choice, no re-fetch needed). `candidates` lists every evaluated document, accepted or
     not; `attempts` every fetch and judgement; `limitations` the bounds and caveats that apply. The optional
     `artifacts` (unsupported descriptions, documentation-only data, authentication barriers, unsupported dynamic
@@ -117,6 +119,7 @@ def outcome_to_dict(outcome: DiscoveryOutcome) -> dict:
     """
     return {
         'status': outcome.status.value,
+        'drift_alerts_allowed': outcome.drift_alerts_allowed,
         'package': None if outcome.package is None else package_to_dict(outcome.package),
         'alternatives': [package_to_dict(p) for p in outcome.packages],
         'candidates': [candidate_to_dict(c) for c in outcome.candidates],

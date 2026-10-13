@@ -101,6 +101,13 @@ CATALOGUE = {'linkset': [{'anchor': HOST + '/v1', 'service-desc': [{'href': '/sp
                          {'anchor': 'https://unrelated.example/api', 'service-desc': [{'href': 'https://unrelated.example/s.json'}]}]}
 
 
+DIRECTORY_INDEX = 'https://api.apis.guru/v2/acme.com.json'
+DIRECTORY_ORIGIN = 'https://raw.githubusercontent.com/acme/specs/main/openapi.json'
+DIRECTORY = {'apis': {'acme.com': {'info': {'title': 'Acme API', 'version': '1', 'x-origin': [
+    {'format': 'openapi', 'url': DIRECTORY_ORIGIN, 'version': '3.0'}]}, 'openapiVer': '3.0.3',
+    'swaggerUrl': 'https://api.apis.guru/v2/specs/acme.com/1.0.0/openapi.json'}}}
+
+
 def scenarios(tmp_path):
     """name -> (what it shows, request, outcome)"""
     def request(target, **hints):
@@ -146,6 +153,11 @@ def scenarios(tmp_path):
            'Found through an RFC 9727 catalogue. The trail records each step with its parent and mechanism; an '
            'unrelated catalogue entry is skipped and recorded.',
            request('api.acme.com'), run({'/.well-known/api-catalog': CATALOGUE, '/specs/pets.json': contract()}))
+    yield ('unconfirmed-via-directory',
+           'The provider publishes nothing on its own host; the APIs.guru directory points to a contract that '
+           'declares the target host. It is returned as unconfirmed with a limitation saying why. Nothing '
+           'confirms it is the complete, current contract, so do not raise drift alerts against it.',
+           request('api.acme.com'), run({DIRECTORY_INDEX: DIRECTORY, DIRECTORY_ORIGIN: contract()}))
     yield ('ambiguous-swagger-config-versions',
            'A Swagger UI initializer points at a configuration file listing two versions. Both are alternatives.',
            request('api.acme.com'), run(SWAGGER_SITE))
@@ -206,13 +218,13 @@ def rendered(tmp_path_factory):
 
 def test_every_status_is_represented(rendered):
     assert {s['outcome']['status'] for s in rendered.values()} == {
-        'validated', 'ambiguous', 'rejected', 'inaccessible', 'not_found'}
+        'validated', 'unconfirmed', 'ambiguous', 'rejected', 'inaccessible', 'not_found'}
 
 
 def test_only_validated_has_a_package_and_only_ambiguous_has_alternatives(rendered):
     for name, sample in rendered.items():
         outcome = sample['outcome']
-        assert (outcome['package'] is not None) == (outcome['status'] == 'validated'), name
+        assert (outcome['package'] is not None) == (outcome['status'] in ('validated', 'unconfirmed')), name
         assert bool(outcome['alternatives']) == (outcome['status'] == 'ambiguous'), name
 
 

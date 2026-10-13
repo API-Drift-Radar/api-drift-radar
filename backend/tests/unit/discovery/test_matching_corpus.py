@@ -116,6 +116,10 @@ ORDINARY = [
     Case('webhook is not an endpoint', REJECT, target='https://api.acme.com/hook', method='POST',
          servers=[{'url': 'https://api.acme.com'}], paths=STANDARD_PATHS,
          extra={'openapi': '3.1.0', 'webhooks': {'/hook': {'post': {}}}}),
+    Case('shared hosting suffix as the target', REJECT, target='https://github.io', source='https://github.io/o.json',
+         servers=[{'url': 'https://someone-else.github.io'}]),
+    Case('another tenant of a shared hosting suffix', REJECT, target='https://one.github.io',
+         source='https://one.github.io/o.json', servers=[{'url': 'https://two.github.io'}]),
 ]
 
 # Known limitations. `rules` is what the explicit rules decide today; `ideal` is the better answer.
@@ -127,8 +131,6 @@ LIMITATIONS = [
           note='needs a mapping to declare expected API hosts'), REJECT),
     (Case('product written without the hyphen', ACCEPT, product='ecommerce', title='E-Commerce Orders',
           note='whole-word text match'), REJECT),
-    (Case('shared hosting suffix as the target', REJECT, target='https://github.io', source='https://github.io/o.json',
-          servers=[{'url': 'https://someone-else.github.io'}], note='no public-suffix list'), ACCEPT),
 ]
 
 

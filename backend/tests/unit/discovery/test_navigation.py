@@ -229,6 +229,12 @@ def test_explore_adds_the_origin_root_and_a_capped_set_of_framework_probes():
     assert len(probes) == 4 + 2 * 8 and '/' in calls and '/platform/api/orders' not in calls
 
 
+def test_probes_can_be_switched_off_while_the_rest_of_exploring_stays():
+    _, _, site = run({}, probe=False)
+    assert not any(u.endswith(p) for u in site.calls for p in FRAMEWORK_PROBES + CONTEXT_PROBES)
+    assert HOST + '/' in site.calls
+
+
 def test_a_target_without_a_path_gets_only_root_probes():
     _, _, site = run({})
     probes = [u.replace(HOST, '') for u in site.calls if any(u.endswith(p) for p in FRAMEWORK_PROBES)]
@@ -462,6 +468,11 @@ def test_sibling_hosts_are_not_guessed_for_an_ordinary_host_or_without_exploring
 def test_two_level_suffixes_keep_their_registrable_domain():
     _, _, site = run({}, target='api.acme.co.uk')
     assert 'https://acme.co.uk/' in site.calls and 'https://co.uk/' not in site.calls
+
+
+def test_siblings_of_a_host_on_a_shared_hosting_suffix_are_not_guessed():
+    _, _, site = run({}, target='api.github.io')
+    assert not any(c.startswith(('https://github.io', 'https://developer.github.io', 'https://docs.github.io')) for c in site.calls)
 
 
 def test_a_page_on_a_sibling_host_can_lead_to_a_contract():

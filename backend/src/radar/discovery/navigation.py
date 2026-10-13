@@ -29,6 +29,7 @@ from radar.discovery.fetch import FetchResult
 from radar.discovery.formats import DOCUMENTATION_ONLY, identify_description, recognize_artifact
 from radar.discovery.input import DiscoveryInputError, normalize_target
 from radar.discovery.limits import BUDGET_STOP_CODES, BudgetExceeded, DiscoveryBudget
+from radar.discovery.suffix import registrable_domain
 from radar.discovery.link_scoring import MIN_CROSS_ORIGIN_SCORE, MIN_SCORE, score_link
 from radar.discovery.links import html_typed_links, parse_link_header
 from radar.discovery.matching import hosts_related
@@ -43,8 +44,6 @@ CONTEXT_PROBES = ('/openapi.json', '/openapi.yaml', '/swagger.json', '/api-docs.
 SIBLING_HOSTS = ('', 'developer', 'developers', 'docs')
 API_LABEL = re.compile(r'(?i)^(?:apis?\d*|rest|public|gateway|api-[\w-]+|[\w-]+-api|developer|developers|docs)$')
 DEEP_SEGMENTS = 5  # a path this deep is an individual reference page (an endpoint, a method), not an index
-TWO_LEVEL = frozenset({'co.uk', 'org.uk', 'ac.uk', 'gov.uk', 'com.au', 'net.au', 'org.au', 'co.nz', 'co.jp', 'co.in', 'com.br',
-                       'com.cn', 'co.za', 'com.mx', 'com.sg', 'co.kr'})
 FRAMEWORK_PROBES = ('/v3/api-docs', '/openapi/v1.json', '/swagger/v1/swagger.json', '/v2/api-docs')
 # Why navigation stopped completely, versus why one lead was skipped.
 STOP_ALL = frozenset({'request_limit', 'navigation_limit', 'deadline_exceeded', 'total_size_limit'})
@@ -145,11 +144,12 @@ class Navigator:
     """One navigation session. Call `seed_*`, then `run()`; `add_leads` + `run()` again for further leads."""
 
     def __init__(self, request: DiscoveryRequest, budget: DiscoveryBudget, *, limits: NavigationLimits | None = None,
-                 allow_loopback: bool = False, cache: dict | None = None, explore: bool = True):
+                 allow_loopback: bool = False, cache: dict | None = None, explore: bool = True, probe: bool = True):
         self.target = normalize_target(request)
         self.budget, self.limits, self.allow_loopback = budget, limits or NavigationLimits(), allow_loopback
         self.cache = {} if cache is None else cache
         self.explore = explore
+        self.probe = probe  # False: skip guessed framework paths (the target named its own specification URL)
         parts = urlsplit(self.target.normalized_url)
         self.origin = f'{parts.scheme}://{parts.netloc}'
         self._heap, self._counter = [], itertools.count()
@@ -219,15 +219,17 @@ class Navigator:
         if self.explore:
             self.add(f'{self.origin}/', 'page', 'origin_root', None, 0, P_ORIGIN_ROOT)
             self._seed_siblings()
-            self._seed_probes()
+            if self.probe:
+                self._seed_probes()
 
     def _seed_siblings(self):
         """The parent domain and its usual documentation hosts, for an API served from a host such as api.example.com."""
         labels = (self.target.hostname or '').rstrip('.').split('.')
         if len(labels) < 3 or not API_LABEL.match(labels[0]) or not all(re.fullmatch(r'[a-z0-9-]+', l) for l in labels):
             return
-        keep = 3 if '.'.join(labels[-2:]) in TWO_LEVEL else 2
-        apex = '.'.join(labels[-keep:])
+        apex = registrable_domain('.'.join(labels))
+        if not apex or apex == self.target.hostname:
+            return
         scheme = urlsplit(self.target.normalized_url).scheme
         for index, prefix in enumerate(self.limits.sibling_hosts):
             host = f'{prefix}.{apex}' if prefix else apex

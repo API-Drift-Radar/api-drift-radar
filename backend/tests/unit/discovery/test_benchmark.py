@@ -35,6 +35,7 @@ def test_recall_precision_and_the_lists_are_computed_from_the_verdicts():
     summary = summarize(v)
     assert summary['recall'] == 0.667 and summary['precision'] == 0.667
     assert summary['misses'] == ['b'] and summary['false_positives'] == ['c'] and summary['unconfirmed_hits'] == 1
+    assert summary['validated_hits'] == 1 and summary['recall_validated'] == 0.333
 
 
 def test_a_crashing_target_is_recorded_and_the_run_continues():
