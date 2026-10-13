@@ -186,6 +186,24 @@ class MigrationTests(DatabaseTestCase):
         )
         self.assertEqual(len(list(database._statements(sql))), 2)
 
+    def test_splits_statements_sharing_a_line(self):
+        sql = "CREATE TABLE a (x); CREATE TABLE b (y);\nINSERT INTO a VALUES ('1;2');"
+        self.assertEqual(
+            list(database._statements(sql)),
+            ["CREATE TABLE a (x);", "CREATE TABLE b (y);", "INSERT INTO a VALUES ('1;2');"],
+        )
+
+    def test_ignores_trailing_comments_but_not_trailing_sql(self):
+        self.assertEqual(len(list(database._statements("CREATE TABLE a (x);\n-- done\n"))), 1)
+        with self.assertRaises(StoreError):
+            list(database._statements("CREATE TABLE a (x);\nCREATE TABLE b (y)"))
+
+    def test_migration_with_statements_on_one_line(self):
+        directory = self.migrations("CREATE TABLE a (x); CREATE TABLE b (y);")
+        db = self.open(migrations_directory=directory)
+        tables = {r["name"] for r in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        self.assertLessEqual({"a", "b"}, tables)
+
 
 class TransactionTests(DatabaseTestCase):
     def test_commits_on_success(self):

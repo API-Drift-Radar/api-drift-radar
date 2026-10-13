@@ -19,6 +19,10 @@ from pathlib import Path
 from radar import config
 from radar.storage.errors import StoreError
 
+# Older Pythons report some SQLite problems as sqlite3.Warning, which is not a
+# subclass of sqlite3.Error. Both mean the database refused the operation.
+DATABASE_ERRORS = (sqlite3.Error, sqlite3.Warning)
+
 MIGRATIONS_DIRECTORY = Path(__file__).resolve().parents[3] / "migrations"
 
 _MIGRATION_NAME = re.compile(r"(\d{4})_[a-z0-9_]+\.sql")
@@ -43,7 +47,7 @@ def connect(path=None, migrations_directory=None):
         connection = sqlite3.connect(
             os.fspath(path), timeout=_BUSY_TIMEOUT_SECONDS, isolation_level=None
         )
-    except sqlite3.Error as error:
+    except DATABASE_ERRORS as error:
         raise StoreError(f"Could not open the Radar database {path}: {error}") from error
 
     try:
@@ -56,7 +60,7 @@ def connect(path=None, migrations_directory=None):
         _migrate(connection, migrations)
     except BaseException as error:
         connection.close()
-        if isinstance(error, sqlite3.Error):
+        if isinstance(error, DATABASE_ERRORS):
             raise StoreError(f"Could not prepare the Radar database: {error}") from error
         raise
     return connection
@@ -78,18 +82,18 @@ def transaction(connection):
         raise StoreError("A transaction is already open on this connection.")
     try:
         connection.execute("BEGIN IMMEDIATE")
-    except sqlite3.Error as error:
+    except DATABASE_ERRORS as error:
         raise StoreError(f"Could not start a database transaction: {error}") from error
     try:
         yield connection
     except BaseException as error:
         _rollback(connection)
-        if isinstance(error, sqlite3.Error):
+        if isinstance(error, DATABASE_ERRORS):
             raise StoreError(f"Database write failed: {error}") from error
         raise
     try:
         connection.execute("COMMIT")
-    except sqlite3.Error as error:
+    except DATABASE_ERRORS as error:
         _rollback(connection)
         raise StoreError(f"Could not commit to the database: {error}") from error
 
@@ -131,28 +135,45 @@ def _migrate(connection, migrations):
             try:
                 for statement in _statements(sql):
                     connection.execute(statement)
-            except sqlite3.Error as error:
+            except DATABASE_ERRORS as error:
                 raise StoreError(f"Migration {name} failed: {error}") from error
             connection.execute(f"PRAGMA user_version = {version}")
 
 
 def _statements(sql):
-    """Split a script into statements, keeping trigger bodies intact."""
-    statement = ""
-    for line in sql.splitlines(keepends=True):
-        if not statement and (not line.strip() or line.lstrip().startswith("--")):
-            continue
-        statement += line
-        if sqlite3.complete_statement(statement):
-            yield statement.strip()
-            statement = ""
-    if statement.strip():
+    """Split a script into single statements, keeping trigger bodies intact.
+
+    Every ``;`` is a possible end of statement; SQLite's own parser
+    (``complete_statement``) decides whether it really is one, so semicolons
+    inside strings, comments and ``BEGIN ... END`` trigger bodies are kept.
+    Two statements on one line are split correctly.
+    """
+    *pieces, tail = sql.split(";")
+    pending = ""
+    for piece in pieces:
+        pending += piece + ";"
+        if sqlite3.complete_statement(pending):
+            statement = pending.strip()
+            pending = ""
+            if not _only_comments(statement):
+                yield statement
+    # Text after the last ";" (or an unfinished statement) must be comments only.
+    if not _only_comments(pending + tail):
         raise StoreError("Migration ends with an incomplete statement.")
+
+
+def _only_comments(text):
+    """True if ``text`` holds nothing but whitespace, ``;`` and ``--`` comments."""
+    for line in text.splitlines():
+        line = line.strip().strip(";").strip()
+        if line and not line.startswith("--"):
+            return False
+    return True
 
 
 def _rollback(connection):
     if connection.in_transaction:
         try:
             connection.execute("ROLLBACK")
-        except sqlite3.Error:
+        except DATABASE_ERRORS:
             pass

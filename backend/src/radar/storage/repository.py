@@ -31,7 +31,6 @@ shared contract package type from discovery is available on ``main``.
 
 import json
 import re
-import sqlite3
 from pathlib import Path
 
 from radar import config as settings
@@ -327,7 +326,7 @@ class Store:
     def _query(self, sql, params):
         try:
             return self._db.execute(sql, params).fetchall()
-        except sqlite3.Error as error:
+        except database.DATABASE_ERRORS as error:
             raise StoreError(f"Could not read from the Radar store: {error}") from error
 
 
