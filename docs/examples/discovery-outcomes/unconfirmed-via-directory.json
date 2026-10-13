@@ -1,0 +1,215 @@
+{
+  "description": "The provider publishes nothing on its own host; the APIs.guru directory points to a contract that declares the target host. It is returned as unconfirmed with a limitation saying why. Nothing confirms it is the complete, current contract, so do not raise drift alerts against it.",
+  "request": {
+    "target": "api.acme.com"
+  },
+  "outcome": {
+    "status": "unconfirmed",
+    "drift_alerts_allowed": false,
+    "package": {
+      "source_url": "https://raw.githubusercontent.com/acme/specs/main/openapi.json",
+      "discovery_method": "directory",
+      "discovery_source": "https://api.apis.guru/v2/acme.com.json",
+      "source_kind": "provider",
+      "content_fingerprint": "9630265182fe73a77886245b2835ebc542bb655c3a97de29a9ab26253b7730d2",
+      "openapi_version": "3.0.3",
+      "title": "Acme Pets API",
+      "info_version": "1.0.0",
+      "server_urls": [
+        "https://api.acme.com/v1"
+      ],
+      "path_count": 2,
+      "operation_count": 4,
+      "root_document": {
+        "url": "https://raw.githubusercontent.com/acme/specs/main/openapi.json",
+        "media_type": "application/json",
+        "size_bytes": 301,
+        "sha256": "9a1779068d473c91eb667bbc68a34f031ee172351f95aa4e408c83648a9d16b5",
+        "retrieved_at": "2026-10-09T12:00:00Z"
+      },
+      "referenced_documents": [],
+      "evidence": [
+        {
+          "criterion": "directory",
+          "outcome": null,
+          "description": "The APIs.guru directory lists 'acme.com' ('Acme API', version '1') for provider acme.com, at the provider's own published source. This is a hint: the entry has not been verified against the document.",
+          "source_url": "https://api.apis.guru/v2/acme.com.json"
+        },
+        {
+          "criterion": "server_host",
+          "outcome": "match",
+          "description": "Server 'https://api.acme.com/v1' declares api.acme.com, the same host as the target host api.acme.com.",
+          "source_url": "https://raw.githubusercontent.com/acme/specs/main/openapi.json"
+        },
+        {
+          "criterion": "operation",
+          "outcome": "not_requested",
+          "description": "No endpoint path or method was given.",
+          "source_url": "https://raw.githubusercontent.com/acme/specs/main/openapi.json"
+        },
+        {
+          "criterion": "api_version",
+          "outcome": "not_requested",
+          "description": "No API version was requested.",
+          "source_url": "https://raw.githubusercontent.com/acme/specs/main/openapi.json"
+        },
+        {
+          "criterion": "product",
+          "outcome": "not_requested",
+          "description": "No product was requested.",
+          "source_url": "https://raw.githubusercontent.com/acme/specs/main/openapi.json"
+        },
+        {
+          "criterion": "provenance",
+          "outcome": "indeterminate",
+          "description": "The contract is hosted at raw.githubusercontent.com and was found by directory, which does not establish that it belongs to api.acme.com.",
+          "source_url": "https://raw.githubusercontent.com/acme/specs/main/openapi.json"
+        }
+      ],
+      "limitations": [
+        "Structural validation only; the document was not checked against the official OpenAPI JSON Schema.",
+        "Matching applies explicit rules to the contract text and its origin; it does not prove identity.",
+        "Only $ref references are followed; operationRef, discriminator.mapping and externalValue targets are not captured."
+      ]
+    },
+    "alternatives": [],
+    "candidates": [
+      {
+        "source_url": "https://raw.githubusercontent.com/acme/specs/main/openapi.json",
+        "discovery_method": "directory",
+        "discovery_source": "https://api.apis.guru/v2/acme.com.json",
+        "source_kind": "provider",
+        "accepted": true,
+        "rejections": [],
+        "evidence": [
+          {
+            "criterion": "directory",
+            "outcome": null,
+            "description": "The APIs.guru directory lists 'acme.com' ('Acme API', version '1') for provider acme.com, at the provider's own published source. This is a hint: the entry has not been verified against the document.",
+            "source_url": "https://api.apis.guru/v2/acme.com.json"
+          },
+          {
+            "criterion": "server_host",
+            "outcome": "match",
+            "description": "Server 'https://api.acme.com/v1' declares api.acme.com, the same host as the target host api.acme.com.",
+            "source_url": "https://raw.githubusercontent.com/acme/specs/main/openapi.json"
+          },
+          {
+            "criterion": "operation",
+            "outcome": "not_requested",
+            "description": "No endpoint path or method was given.",
+            "source_url": "https://raw.githubusercontent.com/acme/specs/main/openapi.json"
+          },
+          {
+            "criterion": "api_version",
+            "outcome": "not_requested",
+            "description": "No API version was requested.",
+            "source_url": "https://raw.githubusercontent.com/acme/specs/main/openapi.json"
+          },
+          {
+            "criterion": "product",
+            "outcome": "not_requested",
+            "description": "No product was requested.",
+            "source_url": "https://raw.githubusercontent.com/acme/specs/main/openapi.json"
+          },
+          {
+            "criterion": "provenance",
+            "outcome": "indeterminate",
+            "description": "The contract is hosted at raw.githubusercontent.com and was found by directory, which does not establish that it belongs to api.acme.com.",
+            "source_url": "https://raw.githubusercontent.com/acme/specs/main/openapi.json"
+          }
+        ],
+        "limitations": [
+          "Structural validation only; the document was not checked against the official OpenAPI JSON Schema.",
+          "Matching applies explicit rules to the contract text and its origin; it does not prove identity.",
+          "Only $ref references are followed; operationRef, discriminator.mapping and externalValue targets are not captured."
+        ]
+      }
+    ],
+    "attempts": [
+      {
+        "url": "https://api.acme.com/openapi.json",
+        "stage": "common_location",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/openapi.yaml",
+        "stage": "common_location",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/swagger.json",
+        "stage": "common_location",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/docs",
+        "stage": "documentation_page",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.acme.com/documentation",
+        "stage": "documentation_page",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.apis.guru/v2/api.acme.com.json",
+        "stage": "directory_page",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      },
+      {
+        "url": "https://api.apis.guru/v2/acme.com.json",
+        "stage": "directory_page",
+        "outcome": "retrieved",
+        "reason": null
+      },
+      {
+        "url": "https://raw.githubusercontent.com/acme/specs/main/openapi.json",
+        "stage": "directory",
+        "outcome": "retrieved",
+        "reason": null
+      },
+      {
+        "url": "https://api.acme.com/.well-known/api-catalog",
+        "stage": "navigation:well_known_api_catalog",
+        "outcome": "not_found",
+        "reason": "http_error: HTTP status 404."
+      }
+    ],
+    "limitations": [
+      "Discovery is bounded: it tried provider mappings, common specification locations, documentation pages and links, and configuration they point to, within fixed request, time, size and host limits.",
+      "This contract declares the target host, but nothing confirms it is the complete, current contract of this API: it was reached through a link or a third-party index, and no requested operation, version or product matched. Confirm it (for example by naming an endpoint) before relying on it.",
+      "Structural validation only; the document was not checked against the official OpenAPI JSON Schema.",
+      "Matching applies explicit rules to the contract text and its origin; it does not prove identity.",
+      "Only $ref references are followed; operationRef, discriminator.mapping and externalValue targets are not captured."
+    ],
+    "artifacts": [],
+    "trail": [
+      {
+        "url": "https://api.acme.com/.well-known/api-catalog",
+        "parent_url": null,
+        "mechanism": "well_known_api_catalog",
+        "kind": "catalog",
+        "depth": 0,
+        "outcome": "failed"
+      }
+    ],
+    "coverage": {
+      "complete": true,
+      "limits_reached": [],
+      "leads_examined": 1,
+      "leads_unexamined": 0,
+      "unexamined": [],
+      "requests_used": 9,
+      "requests_limit": 40,
+      "reserved_for_references": 10,
+      "hosts_contacted": []
+    }
+  }
+}
