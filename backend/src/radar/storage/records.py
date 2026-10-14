@@ -17,9 +17,14 @@ UNCHANGED = "unchanged"  # Same normalized content as the reference.
 CHANGED = "changed"  # Different content; changes were recorded.
 FAILED = "failed"  # The check could not produce a valid snapshot.
 AMBIGUOUS = "ambiguous"  # Discovery found several contracts and none was chosen.
+# Discovery found one valid contract on the right host, but nothing confirmed it
+# is this API (it may be partial, stale or another product's). It is not a
+# baseline and must not raise drift alerts until a later check validates it.
+UNCONFIRMED = "unconfirmed"
 
 SUCCESS_OUTCOMES = frozenset({INITIAL, UNCHANGED, CHANGED})
-FAILURE_OUTCOMES = frozenset({FAILED, AMBIGUOUS})
+# Outcomes that end a check without a snapshot and leave the reference alone.
+FAILURE_OUTCOMES = frozenset({FAILED, AMBIGUOUS, UNCONFIRMED})
 
 # Where a failed check stopped. INTERRUPTED is for a check found still
 # running after Radar restarted, which the execution component may close.

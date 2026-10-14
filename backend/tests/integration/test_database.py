@@ -324,6 +324,16 @@ class SchemaRuleTests(DatabaseTestCase):
         ).fetchone()
         self.assertEqual(tuple(row), ("failed", "discovery", "not_found"))
 
+    def test_unconfirmed_discovery_is_recorded_without_snapshot(self):
+        self.insert_running_check("chk_2")
+        self.db.execute(
+            "UPDATE check_runs SET status = 'unconfirmed', finished_at = ?, "
+            "failure_stage = 'discovery', failure_reason = 'unconfirmed' WHERE id = 'chk_2'",
+            (LATER,),
+        )
+        row = self.db.execute("SELECT status, snapshot_id FROM check_runs WHERE id = 'chk_2'").fetchone()
+        self.assertEqual(tuple(row), ("unconfirmed", None))
+
     def test_changes_are_permanent(self):
         self.finish_as_changed("chk_2")
         self.insert_change("chg_1", "chk_2", "src_1", "snap_1", "snap_2")
@@ -409,6 +419,10 @@ class SchemaRuleTests(DatabaseTestCase):
             ("chk_e", "initial", LATER, "snap_1", "snap_1", None),
             # Unknown status.
             ("chk_f", "done", LATER, None, None, None),
+            # Unconfirmed without a stage.
+            ("chk_g", "unconfirmed", LATER, None, None, None),
+            # Unconfirmed claiming a snapshot.
+            ("chk_h", "unconfirmed", LATER, None, "snap_1", "discovery"),
         ]
         for check_id, status, finished, before, snapshot, stage in bad_rows:
             with self.subTest(check=check_id, status=status):

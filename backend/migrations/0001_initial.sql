@@ -65,7 +65,7 @@ CREATE TABLE check_runs (
     source_id          TEXT NOT NULL REFERENCES sources(id),
     status             TEXT NOT NULL CHECK (status IN (
                            'running', 'initial', 'unchanged', 'changed',
-                           'failed', 'ambiguous')),
+                           'failed', 'ambiguous', 'unconfirmed')),
     started_at         TEXT NOT NULL,
     finished_at        TEXT,
     before_snapshot_id TEXT REFERENCES snapshots(id),  -- reference compared with
@@ -73,11 +73,11 @@ CREATE TABLE check_runs (
     failure_stage      TEXT,                           -- e.g. discovery, fetch, comparison
     failure_reason     TEXT,                           -- e.g. not_found, inaccessible, rejected
     error              TEXT,
-    detail_json        TEXT NOT NULL DEFAULT '{}',     -- e.g. ambiguous candidates
+    detail_json        TEXT NOT NULL DEFAULT '{}',     -- e.g. ambiguous or unconfirmed candidates
     limitations_json   TEXT NOT NULL DEFAULT '[]',     -- comparison coverage limits
     CHECK ((status = 'running') = (finished_at IS NULL)),
     CHECK ((status IN ('initial', 'unchanged', 'changed')) = (snapshot_id IS NOT NULL)),
-    CHECK ((status IN ('failed', 'ambiguous')) = (failure_stage IS NOT NULL)),
+    CHECK ((status IN ('failed', 'ambiguous', 'unconfirmed')) = (failure_stage IS NOT NULL)),
     CHECK ((status = 'initial') <= (before_snapshot_id IS NULL)),
     CHECK ((status IN ('unchanged', 'changed')) <= (before_snapshot_id IS NOT NULL))
 );

@@ -172,8 +172,10 @@ class Store:
     ):
         """Finish a running check without a snapshot.
 
-        ``outcome`` is ``failed``, or ``ambiguous`` when discovery found
-        several candidate contracts (put them in ``detail``). ``stage`` says
+        ``outcome`` is ``failed``; ``ambiguous`` when discovery found several
+        candidate contracts; or ``unconfirmed`` when it found one it could not
+        confirm belongs to this API. For the last two, put the candidates and
+        their evidence in ``detail`` and use stage ``discovery``. ``stage`` says
         where the check stopped (one of ``FAILURE_STAGES``); ``reason`` is a
         short code such as ``inaccessible`` or ``not_found``; ``error`` is a
         human-readable message, truncated if very long.

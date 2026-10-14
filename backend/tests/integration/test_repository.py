@@ -10,7 +10,7 @@ from radar.storage import database, repository
 from radar.storage.contracts import ContractFiles
 from radar.storage.errors import ConflictError, NotFoundError, StoreError
 from radar.storage.identifiers import format_timestamp, is_valid_id, new_id
-from radar.storage.records import AMBIGUOUS, FAILED, RUNNING
+from radar.storage.records import AMBIGUOUS, FAILED, RUNNING, UNCONFIRMED
 from radar.storage.repository import MAX_ERROR_LENGTH, Store
 
 URL = "https://api.example.com"
@@ -314,6 +314,46 @@ class FailedCheckReferenceTests(StoreTestCase):
         failed = self.store.fail_check(check.id, stage="discovery", reason="not_found", error="none")
         self.assertIsNone(failed.before_snapshot_id)
         self.assertIsNone(self.store.latest_snapshot(source.id))
+
+
+class UnconfirmedDiscoveryTests(StoreTestCase):
+    """An unconfirmed contract is recorded, but never becomes the baseline."""
+
+    CANDIDATE = {
+        "candidate": {
+            "source_url": f"{URL}/openapi.json",
+            "discovery_method": "directory",
+            "source_kind": "directory_copy",
+            "evidence": [{"criterion": "server_host", "outcome": "match"}],
+        }
+    }
+
+    def record_unconfirmed(self, source_id):
+        check = self.store.begin_check(source_id)
+        return self.store.fail_check(
+            check.id, stage="discovery", reason="unconfirmed",
+            error="Found a contract on this host, but nothing confirmed it is this API.",
+            outcome=UNCONFIRMED, detail=self.CANDIDATE,
+        )
+
+    def test_recorded_with_its_candidate(self):
+        source = self.store.add_source(URL)
+        check = self.record_unconfirmed(source.id)
+        self.assertEqual(check.status, UNCONFIRMED)
+        self.assertTrue(check.finished)
+        self.assertFalse(check.succeeded)
+        self.assertIsNone(check.snapshot_id)
+        self.assertEqual(check.detail, self.CANDIDATE)
+        self.assertEqual(self.store.list_snapshots(source.id), [])
+        self.assertIsNone(self.store.latest_snapshot(source.id))
+
+    def test_does_not_replace_an_existing_baseline(self):
+        source = self.store.add_source(URL)
+        snapshot_id, _ = self.add_snapshot(source.id)
+        check = self.record_unconfirmed(source.id)
+        self.assertEqual(check.before_snapshot_id, snapshot_id)
+        self.assertEqual(self.store.latest_snapshot(source.id).id, snapshot_id)
+        self.assertEqual(len(self.store.list_snapshots(source.id)), 1)
 
 
 class SnapshotReadTests(StoreTestCase):
