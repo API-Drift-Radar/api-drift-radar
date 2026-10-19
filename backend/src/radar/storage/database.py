@@ -1,19 +1,22 @@
 """SQLite connection, schema migrations and transactions for Radar storage.
 
-Migrations are plain SQL files in ``backend/migrations/`` named
+Migrations are plain SQL files in the ``radar/storage/migrations/`` package
+directory, named
 ``NNNN_description.sql`` and numbered from 0001 without gaps. Each one runs
 in its own transaction together with the update of SQLite's ``user_version``,
 so a database is always at exactly one schema version: a failed or
 interrupted migration leaves it at the previous one.
 
-Migrations are located relative to this source tree, which suits the
-editable install described in docs/setup.md.
+They are shipped inside the installed package and read as package
+resources, so an editable install, a wheel and a zipped install all find
+them the same way.
 """
 
 import os
 import re
 import sqlite3
 from contextlib import contextmanager
+from importlib import resources
 from pathlib import Path
 
 from radar import config
@@ -23,7 +26,7 @@ from radar.storage.errors import StoreError
 # subclass of sqlite3.Error. Both mean the database refused the operation.
 DATABASE_ERRORS = (sqlite3.Error, sqlite3.Warning)
 
-MIGRATIONS_DIRECTORY = Path(__file__).resolve().parents[3] / "migrations"
+MIGRATIONS_DIRECTORY = resources.files("radar.storage").joinpath("migrations")
 
 _MIGRATION_NAME = re.compile(r"(\d{4})_[a-z0-9_]+\.sql")
 _BUSY_TIMEOUT_SECONDS = 30
@@ -99,18 +102,24 @@ def transaction(connection):
 
 
 def load_migrations(directory):
-    """Return ``[(version, name, sql)]`` in order, checking the numbering."""
-    directory = Path(directory)
+    """Return ``[(version, name, sql)]`` in order, checking the numbering.
+
+    ``directory`` is a path, or a package resource such as
+    ``MIGRATIONS_DIRECTORY``.
+    """
+    if isinstance(directory, (str, os.PathLike)):
+        directory = Path(directory)
     if not directory.is_dir():
         raise StoreError(f"Migrations directory not found: {directory}")
     migrations = []
-    for path in sorted(directory.iterdir()):
-        if path.suffix != ".sql":
+    for entry in sorted(directory.iterdir(), key=lambda entry: entry.name):
+        if not entry.name.endswith(".sql"):
             continue
-        match = _MIGRATION_NAME.fullmatch(path.name)
+        match = _MIGRATION_NAME.fullmatch(entry.name)
         if not match:
-            raise StoreError(f"Badly named migration: {path.name}")
-        migrations.append((int(match.group(1)), path.name, path.read_text("utf-8")))
+            raise StoreError(f"Badly named migration: {entry.name}")
+        sql = entry.read_text(encoding="utf-8")
+        migrations.append((int(match.group(1)), entry.name, sql))
     for expected, (version, name, _) in enumerate(migrations, start=1):
         if version != expected:
             raise StoreError(f"Migration {name} is out of sequence; expected {expected:04d}.")

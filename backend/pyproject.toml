@@ -20,6 +20,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "radar.discovery" = ["data/*.json"]
+"radar.storage" = ["migrations/*.sql"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "src"]

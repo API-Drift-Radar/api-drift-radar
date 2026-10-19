@@ -121,13 +121,13 @@ api-drift-radar/
 │   ├── src/radar/
 │   │   ├── discovery/          # Normalization, bounded fetching, candidate search, fallback input reduction
 │   │   ├── comparison/         # Existing JSON structure engine
-│   │   ├── storage/            # Existing baseline and atomic file utilities
+│   │   ├── storage/            # SQLite history and immutable contract files
+│   │   │   └── migrations/     # SQLite schema migrations, shipped in the package
 │   │   ├── monitoring/         # Check workflow and scheduling scaffold
 │   │   ├── api/                # HTTP API scaffold
 │   │   ├── cli/                # Working terminal commands
 │   │   ├── domain/             # Shared domain model scaffold
 │   │   └── config.py           # Runtime path configuration
-│   ├── migrations/             # Future SQLite migrations
 │   └── tests/                  # Unit tests and local fetcher integration tests
 ├── web/
 │   ├── package.json            # Placeholder; no build scripts yet
