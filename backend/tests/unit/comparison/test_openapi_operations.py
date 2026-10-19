@@ -35,12 +35,13 @@ def test_every_labeled_fixture_matches_exactly():
           f'classification accuracy {report.classification_accuracy}')
     assert report.failures == []
     assert (report.precision, report.recall, report.classification_accuracy) == (1.0, 1.0, 1.0)
-    assert len(cases) >= 20 and report.expected >= 15
+    assert len(cases) >= 40 and report.expected >= 30
 
 
-def test_the_fixtures_cover_both_operation_rules_and_the_servers_rule():
+def test_the_fixtures_cover_every_rule():
     wanted = {rule for case in load_cases() for rule, *_ in case.expected_findings}
-    assert wanted == {'operation.removed', 'operation.added', 'servers.changed'}
+    assert wanted == {'operation.removed', 'operation.added', 'servers.changed', 'parameter.added', 'parameter.removed',
+                      'parameter.required_changed', 'parameter.schema_changed', 'parameter.encoding_changed'}
     assert any(not case.expected_findings for case in load_cases())  # unchanged contracts are covered
 
 
@@ -118,7 +119,8 @@ def test_insertion_order_of_mappings_does_not_change_the_result():
 def test_no_findings_never_means_the_whole_contract_is_unchanged():
     result = compare(PETS, copy.deepcopy(PETS))
     assert result.findings == () and result.coverage.complete is False
-    assert 'parameters' in result.coverage.not_assessed and 'response schemas' in result.coverage.not_assessed
+    assert 'request bodies' in result.coverage.not_assessed and 'response schemas' in result.coverage.not_assessed
+    assert 'parameters' in result.coverage.assessed
     scope = next(l for l in result.limitations if l.code == 'scope_not_assessed')
     assert 'does not mean the rest of the contract is unchanged' in scope.explanation
 
@@ -178,7 +180,7 @@ def test_normalize_path_leaves_everything_but_parameter_names_alone():
 def test_the_result_serializes_to_plain_json():
     result = compare(PETS, without(PETS, '/pets/{id}', 'delete'))
     document = json.loads(json.dumps(result_to_dict(result)))
-    assert document['ruleset_version'] == RULESET_VERSION == 'operations-1'
+    assert document['ruleset_version'] == RULESET_VERSION == 'parameters-1'
     assert document['coverage']['complete'] is False
     assert document['findings'][0]['before_location'] == {
         'document_url': 'https://api.acme.com/openapi.json', 'pointer': '/paths/~1pets~1{id}/delete'}

@@ -29,15 +29,6 @@
       },
       "summary": "Pets",
       "description": "All pets",
-      "parameters": [
-        {
-          "name": "limit",
-          "in": "query",
-          "schema": {
-            "type": "integer"
-          }
-        }
-      ],
       "servers": [
         {
           "url": "https://eu.acme.com"

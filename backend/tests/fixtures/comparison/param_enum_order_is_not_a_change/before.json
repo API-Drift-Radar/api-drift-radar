@@ -1,0 +1,64 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Acme Pets",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.acme.com/v1"
+    }
+  ],
+  "paths": {
+    "/pets": {
+      "get": {
+        "summary": "List pets",
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        },
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cat",
+                "dog",
+                "bird"
+              ]
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Create a pet",
+        "responses": {
+          "201": {
+            "description": "created"
+          }
+        }
+      }
+    },
+    "/pets/{id}": {
+      "get": {
+        "summary": "Get a pet",
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a pet",
+        "responses": {
+          "204": {
+            "description": "gone"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "findings": [
+    {
+      "rule_id": "parameter.schema_changed",
+      "method": "GET",
+      "path": "/pets",
+      "category": "uncertain",
+      "parameter": "query:filter"
+    }
+  ],
+  "limitations": []
+}
