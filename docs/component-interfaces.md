@@ -1075,7 +1075,7 @@ it, installed outside the checkout.
 - **No retention.** Nothing is ever deleted, so history and contract files grow with every changed contract.
 
 
-## Contract comparison, operations (issue #11, increment 1)
+## Contract comparison: operations and parameters (issue #11, increments 1 and 2)
 
 ```python
 from radar.comparison.openapi import compare_contracts, result_to_dict
@@ -1083,15 +1083,27 @@ result = compare_contracts(before_package, after_package)   # two ValidatedContr
 ```
 
 - **Perspective:** a client that calls the API. Findings are potential risk under Radar's rules, not proof of breakage.
-- **Rules (`operations-1`):** `operation.removed` is `potentially_breaking`; `operation.added` is
+- **Rules (ruleset `parameters-1`):** `operation.removed` is `potentially_breaking`; `operation.added` is
   `non_breaking_under_rules`; `servers.changed` is `uncertain`. A renamed path is a removal plus an addition. Path
   parameter names are normalized (`/pets/{id}` equals `/pets/{petId}`).
+- **Parameter rules** (`direction: request`, only for operations present in both contracts; a new or removed operation
+  is reported once, as itself). A parameter is identified by `in` plus name (header names ignore case); a path
+  parameter by its position in the template. Path-level parameters apply to every operation and an operation-level one
+  with the same identity overrides them; `$ref` parameters and schemas are followed offline.
+  `parameter.added` is `potentially_breaking` if required and `non_breaking_under_rules` if optional;
+  `parameter.removed` is `potentially_breaking` (an old client may still send it); `parameter.required_changed` is
+  `potentially_breaking` when it becomes required and `non_breaking_under_rules` when it becomes optional;
+  `parameter.schema_changed` (the schema or `content` differs once references are expanded and annotations removed) and
+  `parameter.encoding_changed` (`style`, `explode`, `allowReserved`, defaults applied) are `uncertain` until the schema
+  rules exist. Descriptions, examples and deprecation are not assessed. A parameter that cannot be read is a limitation
+  (`parameter_unresolved`, `parameter_unreadable`, `parameter_duplicate`, `parameter_schema_unresolved`) and only that
+  operation is skipped. A finding's parameter is the last part of its key (`query:limit`, `path:0`).
 - **Finding:** `key` (deterministic, no timestamps; storage deduplicates on it, and owns persistent record IDs),
   `rule_id`, `category`, `change_kind`, `direction` (`request`/`response`/`none`; `none` for whole operations), method,
   path, `before_present`/`after_present` (absence is never a null value), `before_value`/`after_value`, and a
   `before_location`/`after_location` (`document_url` plus JSON Pointer; a path item reached through `$ref` is located in
   the document that defines it).
-- **Limitations and coverage:** `coverage.complete` is false while parameters, bodies, schemas and documentation are
+- **Limitations and coverage:** `coverage.complete` is false while request bodies, response schemas and documentation are
   unassessed, so an empty `findings` list never means "unchanged". Limitations also name unresolved path items,
   ambiguous path templates, webhooks, and inputs that are `unconfirmed` or a `directory_copy` (the comparator still
   compares; monitoring decides whether to alert).

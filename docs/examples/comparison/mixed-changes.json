@@ -1,7 +1,7 @@
 {
   "description": "Removal, addition, a parameter rename (no finding), a wording change (not assessed) and a servers change.",
   "result": {
-    "ruleset_version": "operations-1",
+    "ruleset_version": "parameters-1",
     "findings": [
       {
         "key": "servers.changed",
@@ -73,20 +73,20 @@
         "code": "scope_not_assessed",
         "scope": "contract",
         "blocks_classification": false,
-        "explanation": "Not assessed yet: parameters, request bodies, response schemas, documentation, path-level and operation-level servers, callbacks. No findings in this result does not mean the rest of the contract is unchanged."
+        "explanation": "Not assessed yet: request bodies, response schemas, documentation (descriptions, examples, deprecation), path-level and operation-level servers, callbacks. No findings in this result does not mean the rest of the contract is unchanged."
       }
     ],
     "coverage": {
       "complete": false,
       "assessed": [
         "operations",
-        "servers"
+        "servers",
+        "parameters"
       ],
       "not_assessed": [
-        "parameters",
         "request bodies",
         "response schemas",
-        "documentation",
+        "documentation (descriptions, examples, deprecation)",
         "path-level and operation-level servers",
         "callbacks"
       ]
