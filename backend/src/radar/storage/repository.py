@@ -19,22 +19,24 @@ Rules every operation follows:
 * History is never edited. A check can be finished once; finishing it again
   raises ``ConflictError``. Snapshots, checks and changes are never deleted.
 * A failed check never moves a source's latest valid snapshot.
+* A successful check writes its contract files first, then every record in
+  one transaction, so no record can point at missing or partial content.
 * Database problems are reported as ``StoreError``.
 
 A ``Store`` must be used from the thread that created it, as SQLite
 connections are not safe to share between threads. Open one ``Store`` per
 thread or process; several may use the same data directory at once.
-
-Recording a successful capture (``complete_check``) will be added once the
-shared contract package type from discovery is available on ``main``.
 """
 
+import hashlib
 import json
 import re
+from collections.abc import Mapping
 from pathlib import Path
 
 from radar import config as settings
 from radar.storage import database
+from radar.storage.bundles import plan_bundle
 from radar.storage.contracts import ContractFiles
 from radar.storage.errors import ConflictError, NotFoundError, StoreError
 from radar.storage.identifiers import (
@@ -49,6 +51,14 @@ from radar.storage.identifiers import (
     utc_now,
 )
 from radar.storage.records import (
+    ABSENT,
+    CHANGED,
+    CLASSIFICATIONS,
+    DIRECTIONS,
+    INITIAL,
+    SUCCESS_OUTCOMES,
+    UNCHANGED,
+    ChangeInput,
     FAILED,
     FAILURE_OUTCOMES,
     FAILURE_STAGES,
@@ -213,6 +223,171 @@ class Store:
             )
         return self.get_check(check_id)
 
+    def complete_check(
+        self,
+        check_id,
+        *,
+        outcome,
+        package,
+        normalized,
+        normalization_version,
+        before_snapshot_id=None,
+        changes=(),
+        limitations=(),
+        content_fingerprint=None,
+        finished_at=None,
+    ):
+        """Finish a running check with a captured contract, as a new snapshot.
+
+        ``outcome`` is ``initial`` (the source's first capture), ``unchanged``
+        or ``changed``. ``package`` is discovery's validated contract package;
+        its documents are stored byte for byte and its provenance is kept with
+        the snapshot. ``normalized`` and ``normalization_version`` are the
+        comparison form of the contract, produced by the caller.
+        ``before_snapshot_id`` is the reference the package was compared with:
+        None for ``initial``, otherwise the source's current latest snapshot.
+        ``changes`` (``ChangeInput`` records, in the comparison's order) are
+        only allowed for ``changed``; ``limitations`` lists what the
+        comparison could not analyse. ``content_fingerprint`` is discovery's
+        format-independent identity of the contract, if available.
+
+        Contract files are written and synced first; then the snapshot, its
+        document origins, the finished check, its changes and the source's
+        new reference are written in one transaction. Identical content is
+        stored once and shared between snapshots.
+
+        Raises ``ConflictError`` if the check already finished or the
+        reference moved since the comparison was made (compare again against
+        the new reference), and ``ValueError`` for inconsistent input, such
+        as ``unchanged`` with different normalized content.
+        """
+        if outcome not in SUCCESS_OUTCOMES:
+            raise ValueError(f"Not a successful outcome: {outcome!r}.")
+        if (outcome == INITIAL) != (before_snapshot_id is None):
+            raise ValueError(
+                "An initial capture has no before snapshot; unchanged and changed need one."
+            )
+        if before_snapshot_id is not None and not is_valid_id(before_snapshot_id, SNAPSHOT):
+            raise NotFoundError(f"No snapshot with id {before_snapshot_id!r}.")
+        change_rows = [_check_change(change, index) for index, change in enumerate(changes)]
+        if change_rows and outcome != CHANGED:
+            raise ValueError(f"A check with outcome {outcome!r} cannot have changes.")
+        if isinstance(limitations, (str, bytes, bytearray, Mapping)):
+            raise TypeError("limitations must be a list of entries, not a single value.")
+        limitations_json = _to_json(list(limitations), "limitations", list)
+        if not isinstance(normalized, (bytes, bytearray)):
+            raise TypeError("normalized must be bytes.")
+        normalized = bytes(normalized)
+        if (
+            not isinstance(normalization_version, str)
+            or not normalization_version.strip()
+            or len(normalization_version) > 128
+        ):
+            raise ValueError("normalization_version must be a short nonempty string.")
+        if content_fingerprint is not None and (
+            not isinstance(content_fingerprint, str) or not 0 < len(content_fingerprint) <= 128
+        ):
+            raise ValueError("content_fingerprint must be a short string or None.")
+        plan, provenance, openapi_version = _read_package(package)
+        provenance_json = _to_json(provenance, "provenance", dict)
+        captured_at = max(origin.retrieved_at for origin in plan.origins)
+        finished = finished_at if finished_at is not None else utc_now()
+        finished_text = format_timestamp(finished)
+
+        # Fail fast, before writing files, if the check cannot be completed.
+        if finished < self._running_check(check_id).started_at:
+            raise ValueError("finished_at is earlier than the check's start.")
+
+        # 1. Contract files: complete and synced before any record refers to them.
+        fingerprint = self._files.put(
+            plan.entry_point, plan.documents, normalized, normalization_version
+        )
+        normalized_sha256 = hashlib.sha256(normalized).hexdigest()
+        snapshot_id = new_id(SNAPSHOT)
+
+        # 2. Every record, all or nothing.
+        with database.transaction(self._db):
+            check = self._running_check(check_id)
+            if finished < check.started_at:
+                raise ValueError("finished_at is earlier than the check's start.")
+            latest = self._db.execute(
+                "SELECT latest_snapshot_id FROM sources WHERE id = ?", (check.source_id,)
+            ).fetchone()["latest_snapshot_id"]
+            if latest != before_snapshot_id:
+                raise ConflictError(
+                    f"The source's reference is {latest}, not {before_snapshot_id}; "
+                    "compare against the current reference and try again."
+                )
+            if before_snapshot_id is not None:
+                self._check_outcome_matches(
+                    outcome, before_snapshot_id, normalized_sha256, normalization_version
+                )
+
+            self._db.execute(
+                "INSERT OR IGNORE INTO contracts (fingerprint, entry_point, "
+                "normalization_version, normalized_sha256, document_count, total_size, "
+                "created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    fingerprint,
+                    plan.entry_point,
+                    normalization_version,
+                    normalized_sha256,
+                    len(plan.documents),
+                    sum(map(len, plan.documents.values())) + len(normalized),
+                    format_timestamp(utc_now()),
+                ),
+            )
+            self._db.execute(
+                "INSERT INTO snapshots (id, source_id, fingerprint, captured_at, "
+                "normalization_version, openapi_version, content_fingerprint, media_type, "
+                "provenance_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    snapshot_id,
+                    check.source_id,
+                    fingerprint,
+                    format_timestamp(captured_at),
+                    normalization_version,
+                    openapi_version,
+                    content_fingerprint,
+                    plan.origins[0].media_type,
+                    provenance_json,
+                ),
+            )
+            for origin in plan.origins:
+                self._db.execute(
+                    "INSERT INTO snapshot_documents (snapshot_id, source_url, path, "
+                    "retrieved_at, media_type, is_root) VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        snapshot_id,
+                        origin.source_url,
+                        origin.path,
+                        format_timestamp(origin.retrieved_at),
+                        origin.media_type,
+                        int(origin.is_root),
+                    ),
+                )
+            self._db.execute(
+                "UPDATE check_runs SET status = ?, finished_at = ?, before_snapshot_id = ?, "
+                "snapshot_id = ?, limitations_json = ? WHERE id = ?",
+                (outcome, finished_text, before_snapshot_id, snapshot_id, limitations_json,
+                 check_id),
+            )
+            for ordinal, row in enumerate(change_rows):
+                self._db.execute(
+                    "INSERT INTO changes (id, check_run_id, source_id, before_snapshot_id, "
+                    "after_snapshot_id, ordinal, change_type, location, direction, "
+                    "classification, summary, rationale, before_value_json, "
+                    "after_value_json, details_json) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (new_id(CHANGE), check_id, check.source_id, before_snapshot_id,
+                     snapshot_id, ordinal, *row),
+                )
+            self._db.execute(
+                "UPDATE sources SET latest_snapshot_id = ? WHERE id = ?",
+                (snapshot_id, check.source_id),
+            )
+        return self.get_check(check_id)
+
     def get_check(self, check_id):
         return _check_run(self._require("check_runs", check_id, CHECK))
 
@@ -319,6 +494,25 @@ class Store:
             raise NotFoundError(f"No {_KIND_NAMES[kind]} with id {record_id!r}.")
         return rows[0]
 
+    def _check_outcome_matches(self, outcome, before_snapshot_id, normalized_sha256, version):
+        """Refuse an outcome the stored content contradicts."""
+        before = self._db.execute(
+            "SELECT c.normalized_sha256, c.normalization_version FROM snapshots s "
+            "JOIN contracts c ON c.fingerprint = s.fingerprint WHERE s.id = ?",
+            (before_snapshot_id,),
+        ).fetchone()
+        same_rules = before["normalization_version"] == version
+        same_content = same_rules and before["normalized_sha256"] == normalized_sha256
+        if outcome == UNCHANGED and not same_rules:
+            raise ValueError(
+                "Cannot record 'unchanged' across normalization versions "
+                f"({before['normalization_version']} vs {version}); record 'changed'."
+            )
+        if outcome == UNCHANGED and not same_content:
+            raise ValueError("Outcome is 'unchanged' but the normalized content differs.")
+        if outcome == CHANGED and same_content:
+            raise ValueError("Outcome is 'changed' but the normalized content is identical.")
+
     def _running_check(self, check_id):
         check = self.get_check(check_id)
         if check.finished:
@@ -376,6 +570,87 @@ def _to_json(value, name, expected_type):
     if len(_check_text(text, name).encode("utf-8")) > MAX_JSON_BYTES:
         raise ValueError(f"{name} is larger than {MAX_JSON_BYTES} bytes.")
     return text
+
+
+MAX_CHANGE_TEXT = 4000
+
+
+def _check_change(change, index):
+    """Validate one ChangeInput and return its column values."""
+    label = f"Change {index}"
+    if not isinstance(change, ChangeInput):
+        raise TypeError(f"{label} must be a ChangeInput.")
+    for name in ("change_type", "location", "summary"):
+        value = getattr(change, name)
+        if not isinstance(value, str) or not value.strip() or len(value) > MAX_CHANGE_TEXT:
+            raise ValueError(f"{label}: {name} must be a nonempty string.")
+        _check_text(value, f"{label}: {name}")
+    if change.classification not in CLASSIFICATIONS:
+        raise ValueError(f"{label}: unknown classification {change.classification!r}.")
+    if change.direction is not None and change.direction not in DIRECTIONS:
+        raise ValueError(f"{label}: direction must be 'request', 'response' or None.")
+    if change.rationale is not None:
+        if not isinstance(change.rationale, str) or len(change.rationale) > MAX_CHANGE_TEXT:
+            raise ValueError(f"{label}: rationale must be a string or None.")
+        _check_text(change.rationale, f"{label}: rationale")
+    return (
+        change.change_type,
+        change.location,
+        change.direction,
+        change.classification,
+        change.summary,
+        change.rationale,
+        _value_json(change.before, f"{label}: before"),
+        _value_json(change.after, f"{label}: after"),
+        _to_json(dict(change.details) if isinstance(change.details, Mapping) else change.details,
+                 f"{label}: details", dict),
+    )
+
+
+def _value_json(value, name):
+    """ABSENT is stored as SQL NULL; any JSON value (including null) as JSON text."""
+    if value is ABSENT:
+        return None
+    return _to_json([value], name, list)[1:-1]
+
+
+def _read_package(package):
+    """Turn a validated contract package into a bundle plan and provenance.
+
+    Reads only the shared domain fields, so storage does not depend on how
+    discovery builds packages.
+    """
+    try:
+        candidate = package.candidate
+        root = package.root_document
+        referenced = tuple(package.referenced_documents)
+        openapi_version = package.openapi_version
+        package_limitations = tuple(package.limitations)
+        evidence = tuple(candidate.evidence)
+        provenance = {
+            "source_url": candidate.source_url,
+            "discovery_method": candidate.discovery_method,
+            "discovery_source": candidate.discovery_source,
+            "source_kind": getattr(candidate, "source_kind", "provider"),
+            "evidence": [
+                {
+                    "criterion": item.criterion,
+                    "description": item.description,
+                    "source_url": item.source_url,
+                    "outcome": getattr(item, "outcome", None),
+                }
+                for item in evidence
+            ],
+            "candidate_limitations": list(candidate.limitations),
+            "package_limitations": list(package_limitations),
+        }
+    except (AttributeError, TypeError) as error:
+        raise TypeError(f"package is not a validated contract package: {error}") from None
+    if openapi_version is not None and (
+        not isinstance(openapi_version, str) or len(openapi_version) > 32
+    ):
+        raise ValueError("package.openapi_version must be a short string.")
+    return plan_bundle(root, referenced), provenance, openapi_version
 
 
 def _limit(limit):
@@ -479,11 +754,11 @@ def _change(row):
         classification=row["classification"],
         summary=row["summary"],
         rationale=row["rationale"],
-        before_value=_optional_json(row["before_value_json"]),
-        after_value=_optional_json(row["after_value_json"]),
+        before_value=_stored_value(row["before_value_json"]),
+        after_value=_stored_value(row["after_value_json"]),
         details=json.loads(row["details_json"]),
     )
 
 
-def _optional_json(text):
-    return None if text is None else json.loads(text)
+def _stored_value(text):
+    return ABSENT if text is None else json.loads(text)

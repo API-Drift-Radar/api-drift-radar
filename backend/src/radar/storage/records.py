@@ -6,7 +6,7 @@ state. Mapping and list fields (``config``, ``detail`` and so on) are new
 objects each time for the same reason.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Mapping, Optional, Sequence
 
@@ -41,6 +41,39 @@ FAILURE_STAGES = frozenset(
     }
 )
 
+# Which side of an API exchange a change affects.
+REQUEST = "request"
+RESPONSE = "response"
+DIRECTIONS = frozenset({REQUEST, RESPONSE})
+
+
+class _Absent:
+    """Marks a value that does not exist, as opposed to a value that is null.
+
+    A field added to a contract has no "before" value; a field whose default
+    changed from null to 0 has a "before" value of None. ``ABSENT`` keeps
+    the two apart, both when recording a change and when reading it back.
+    """
+
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __repr__(self):
+        return "ABSENT"
+
+    def __bool__(self):
+        return False
+
+    def __reduce__(self):
+        return (_Absent, ())
+
+
+ABSENT = _Absent()
+
 # The four agreed change classifications.
 POTENTIALLY_BREAKING = "potentially_breaking"
 NON_BREAKING = "non_breaking"
@@ -49,6 +82,28 @@ UNCERTAIN = "uncertain"
 CLASSIFICATIONS = frozenset(
     {POTENTIALLY_BREAKING, NON_BREAKING, DOCUMENTATION_ONLY, UNCERTAIN}
 )
+
+
+@dataclass(frozen=True)
+class ChangeInput:
+    """One difference to record for a changed check.
+
+    Storage's own input shape, so storage does not depend on the comparison
+    engine's types; the execution component maps each comparison finding to
+    one of these. ``before`` and ``after`` hold JSON values, or ``ABSENT``
+    when the thing did not exist on that side (for example a removed field
+    has no ``after``).
+    """
+
+    change_type: str  # e.g. "operation_removed", "enum_value_added"
+    location: str  # e.g. "GET /users > response 200 > body.id"
+    classification: str  # one of CLASSIFICATIONS
+    summary: str
+    direction: Optional[str] = None  # REQUEST, RESPONSE, or None if neither applies
+    rationale: Optional[str] = None
+    before: Any = ABSENT
+    after: Any = ABSENT
+    details: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -131,6 +186,6 @@ class ChangeRecord:
     classification: str
     summary: str
     rationale: Optional[str]
-    before_value: Any
-    after_value: Any
+    before_value: Any  # a JSON value, or ABSENT if it did not exist before
+    after_value: Any  # a JSON value, or ABSENT if it no longer exists
     details: Mapping[str, Any]
