@@ -168,3 +168,13 @@ class DiscoveryOutcome:
             raise ValueError("Only a validated or unconfirmed outcome must contain a contract package.")
         if self.packages and self.status is not DiscoveryStatus.AMBIGUOUS:
             raise ValueError("Only an ambiguous outcome carries alternative packages.")
+
+
+# Checks that tie a contract to the requested API. A host match alone does not: any third-party document can declare
+# a host, and a partial or stale description of the host's API declares it too.
+CONFIRMING_CRITERIA = ("provenance", "operation", "api_version", "product")
+
+
+def is_confirmed(package: ValidatedContractPackage) -> bool:
+    """False for a package that discovery would report as `unconfirmed`."""
+    return any(e.criterion in CONFIRMING_CRITERIA and e.outcome == "match" for e in package.candidate.evidence)
