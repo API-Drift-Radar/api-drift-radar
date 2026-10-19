@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import tempfile
 import threading
@@ -88,6 +89,21 @@ class OpeningTests(StoreTestCase):
             with Store() as store:
                 store.add_source(URL)
         self.assertTrue((other / "radar.db").is_file())
+
+    def test_opening_clears_leftovers_of_crashed_writes(self):
+        contracts_dir = self.data / "contracts"
+        old = contracts_dir / (".incoming-" + "a" * 32)
+        recent = contracts_dir / (".incoming-" + "b" * 32)
+        for path in (old, recent):
+            (path / "original").mkdir(parents=True)
+            (path / "original" / "root.yaml").write_bytes(b"partial")
+        two_hours_ago = old.stat().st_mtime - 2 * 60 * 60
+        os.utime(old, (two_hours_ago, two_hours_ago))
+
+        self.open_store()
+
+        self.assertFalse(old.exists())
+        self.assertTrue(recent.exists())  # may belong to a write in progress
 
     def test_refuses_use_from_another_thread(self):
         errors = []

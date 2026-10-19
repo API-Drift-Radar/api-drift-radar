@@ -22,6 +22,8 @@ Rules every operation follows:
 * A successful check writes its contract files first, then every record in
   one transaction, so no record can point at missing or partial content.
 * Database problems are reported as ``StoreError``.
+* Opening a ``Store`` deletes temporary files left by writes that crashed
+  more than an hour ago (see ``ContractFiles.remove_abandoned``).
 
 A ``Store`` must be used from the thread that created it, as SQLite
 connections are not safe to share between threads. Open one ``Store`` per
@@ -89,6 +91,9 @@ class Store:
             contracts_directory = Path(data_directory) / "contracts"
         self._db = database.connect(database_path, migrations_directory)
         self._files = ContractFiles(contracts_directory)
+        # Opening the store is the first thing that happens after a crash, so
+        # it is when leftovers of interrupted writes are cleared away.
+        self._files.remove_abandoned()
 
     def close(self):
         self._db.close()

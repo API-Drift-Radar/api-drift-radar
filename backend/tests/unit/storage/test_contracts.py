@@ -318,5 +318,106 @@ class InputValidationTests(ContractFilesTestCase):
         self.assertEqual(self.entries(), [])
 
 
+class RemoveAbandonedTests(ContractFilesTestCase):
+    """Leftovers of crashed writes are deleted once no live writer can own them."""
+
+    HOUR = contracts.ABANDONED_AFTER_SECONDS
+
+    def leftover(self, name=None, age=2 * 60 * 60, files=("original/openapi.yaml",)):
+        """Create a half-written incoming directory last modified ``age`` seconds ago."""
+        path = self.dir / (name or contracts.INCOMING_PREFIX + os.urandom(16).hex())
+        for relative in files:
+            target = path / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b"partial")
+        path.mkdir(parents=True, exist_ok=True)
+        stamp = os.stat(path).st_mtime - age
+        os.utime(path, (stamp, stamp))
+        return path
+
+    def test_removes_old_leftovers_and_their_contents(self):
+        self.dir.mkdir()
+        old = [self.leftover(), self.leftover(files=())]
+        self.assertEqual(self.files.remove_abandoned(), 2)
+        for path in old:
+            self.assertFalse(path.exists())
+
+    def test_keeps_a_write_that_may_still_be_in_progress(self):
+        self.dir.mkdir()
+        recent = self.leftover(age=60)
+        self.assertEqual(self.files.remove_abandoned(), 0)
+        self.assertTrue(recent.exists())
+
+    def test_age_is_measured_against_the_threshold(self):
+        self.dir.mkdir()
+        path = self.leftover(age=0)
+        mtime = os.stat(path).st_mtime
+        self.assertEqual(self.files.remove_abandoned(now=mtime + self.HOUR - 1), 0)
+        self.assertEqual(self.files.remove_abandoned(now=mtime + self.HOUR + 1), 1)
+
+    def test_a_directory_modified_in_the_future_is_kept(self):
+        self.dir.mkdir()
+        path = self.leftover(age=-self.HOUR)  # e.g. the clock was set back
+        self.assertEqual(self.files.remove_abandoned(), 0)
+        self.assertTrue(path.exists())
+
+    def test_never_touches_stored_bundles(self):
+        fingerprint = self.put()
+        bundle = self.dir / fingerprint
+        stamp = os.stat(bundle).st_mtime - 10 * self.HOUR
+        os.utime(bundle, (stamp, stamp))
+        self.leftover()
+        self.files.remove_abandoned()
+        self.assertEqual(self.entries(), [fingerprint])
+        self.files.verify(fingerprint)
+
+    def test_only_removes_names_put_would_create(self):
+        self.dir.mkdir()
+        others = [
+            self.leftover(name=".incoming-notes"),
+            self.leftover(name=".incoming-" + "A" * 32),
+            self.leftover(name=".incoming-" + "a" * 32 + "x"),
+            self.leftover(name="incoming-" + "a" * 32),
+        ]
+        stray_file = self.dir / (contracts.INCOMING_PREFIX + "b" * 32)
+        stray_file.write_bytes(b"not a directory")
+        os.utime(stray_file, (0, 0))
+        self.assertEqual(self.files.remove_abandoned(), 0)
+        for path in others + [stray_file]:
+            self.assertTrue(path.exists(), path.name)
+
+    @unittest.skipUnless(hasattr(os, "symlink"), "needs symbolic links")
+    def test_does_not_follow_a_symbolic_link(self):
+        self.dir.mkdir()
+        outside = self.dir.parent / "outside"
+        outside.mkdir()
+        (outside / "keep.txt").write_bytes(b"precious")
+        link = self.dir / (contracts.INCOMING_PREFIX + "c" * 32)
+        try:
+            os.symlink(outside, link, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("symbolic links not permitted here")
+        self.assertEqual(self.files.remove_abandoned(now=10 ** 12), 0)
+        self.assertEqual((outside / "keep.txt").read_bytes(), b"precious")
+
+    def test_missing_directory_is_not_an_error(self):
+        self.assertEqual(self.files.remove_abandoned(), 0)
+        self.assertFalse(self.dir.exists())
+
+    def test_a_leftover_that_cannot_be_removed_is_skipped_quietly(self):
+        self.dir.mkdir()
+        stuck, removable = self.leftover(), self.leftover()
+        real_rmtree = contracts.shutil.rmtree
+
+        def rmtree(path, ignore_errors=False):
+            if os.path.basename(path) != stuck.name:
+                real_rmtree(path, ignore_errors=ignore_errors)
+
+        with patch.object(contracts.shutil, "rmtree", side_effect=rmtree):
+            self.assertEqual(self.files.remove_abandoned(), 1)
+        self.assertTrue(stuck.exists())
+        self.assertFalse(removable.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

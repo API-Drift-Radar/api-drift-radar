@@ -16,6 +16,13 @@ A bundle is assembled under a temporary ``.incoming-*`` name and renamed into
 place only after every file is written and synced, so a fingerprint
 directory is never partial. Bundles are never modified or removed.
 
+A crash part-way through a write leaves its ``.incoming-*`` directory
+behind. Nothing refers to it, so it is harmless, and ``remove_abandoned``
+deletes such directories once they are old enough that no live writer can
+still be using them. A crash after the rename but before the database
+records are written leaves a complete bundle that no snapshot refers to; it
+is kept, and reused if the same content is captured again.
+
 This module stores bytes. It does not parse, validate or compare contracts;
 SQLite records that refer to bundles are written elsewhere, and only after
 ``put`` has returned.
@@ -24,7 +31,10 @@ SQLite records that refer to bundles are written elsewhere, and only after
 import hashlib
 import json
 import os
+import re
 import shutil
+import stat
+import time
 import uuid
 from dataclasses import dataclass
 from typing import Mapping
@@ -36,6 +46,9 @@ MANIFEST_NAME = "manifest.json"
 ORIGINAL_DIRECTORY = "original"
 NORMALIZED_NAME = "normalized"
 INCOMING_PREFIX = ".incoming-"
+# A write takes seconds; anything this old was abandoned by a crashed writer.
+ABANDONED_AFTER_SECONDS = 60 * 60
+_INCOMING_NAME = re.compile(re.escape(INCOMING_PREFIX) + r"[0-9a-f]{32}")
 
 # Characters Windows does not allow in file names, plus the separators.
 _FORBIDDEN_CHARACTERS = frozenset('<>:"\\|?*')
@@ -127,6 +140,37 @@ class ContractFiles:
 
         self.verify(fingerprint)
         return fingerprint
+
+    def remove_abandoned(self, older_than=ABANDONED_AFTER_SECONDS, now=None):
+        """Delete ``.incoming-*`` directories left by writes that crashed.
+
+        Only directories named exactly as ``put`` names them and last modified
+        more than ``older_than`` seconds ago are removed, so a write still in
+        progress in another process is never touched. Best effort: anything
+        that cannot be removed now is left for a later attempt, and errors
+        are never raised. Returns the number of directories removed.
+        """
+        now = time.time() if now is None else now
+        try:
+            names = os.listdir(self.directory)
+        except OSError:
+            return 0  # Missing or unreadable: nothing to clean.
+        removed = 0
+        for name in names:
+            if not _INCOMING_NAME.fullmatch(name):
+                continue
+            path = os.path.join(self.directory, name)
+            try:
+                info = os.lstat(path)
+            except OSError:
+                continue  # Already gone, perhaps renamed into place.
+            # lstat, so a symbolic link is never followed out of this directory.
+            if not stat.S_ISDIR(info.st_mode) or now - info.st_mtime < older_than:
+                continue
+            shutil.rmtree(path, ignore_errors=True)
+            if not os.path.lexists(path):
+                removed += 1
+        return removed
 
     def exists(self, fingerprint):
         """True if a bundle directory exists. Use ``verify`` to check it."""
