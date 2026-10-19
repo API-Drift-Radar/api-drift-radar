@@ -8,16 +8,13 @@ already captured; if that is impossible the path is reported as unresolved, neve
 from dataclasses import dataclass, field
 import re
 from typing import Any
-from urllib.parse import urldefrag
 
-from radar.discovery.references import (
-    ExternalReference, LocalReference, classify_reference, json_pointer, resolve_pointer,
-)
-from radar.discovery.validation import HTTP_METHODS, parse_document
+from radar.comparison.openapi.references import Documents, Unresolved
+from radar.discovery.references import json_pointer
+from radar.discovery.validation import HTTP_METHODS
 from radar.domain.comparison import ComparisonLimitation, SourceLocation
 from radar.domain.discovery import ValidatedContractPackage
 
-MAX_REF_CHAIN = 8
 _TEMPLATE = re.compile(r"\{[^{}]*\}")
 
 
@@ -37,6 +34,12 @@ class Operation:
     method: str  # upper case
     declared_path: str
     location: SourceLocation
+    # What parameter comparison reads: the operation object, its path item, and where the path item is defined.
+    node: dict = field(compare=False, default_factory=dict)
+    item: dict = field(compare=False, default_factory=dict)
+    item_url: str = ""
+    item_tokens: tuple = field(compare=False, default=())
+    documents: Documents | None = field(compare=False, default=None)
 
 
 @dataclass
@@ -49,56 +52,20 @@ class ContractView:
     has_webhooks: bool = False
 
 
-class _Documents:
-    def __init__(self, package: ValidatedContractPackage):
-        self.root_url = package.root_document.source_url
-        self._captured = {d.source_url: d for d in package.referenced_documents}
-        self._parsed: dict[str, Any] = {self.root_url: package.parsed_contract}
-
-    def get(self, url: str):
-        """(found, parsed document); documents are parsed once and never modified."""
-        if url in self._parsed:
-            return True, self._parsed[url]
-        captured = self._captured.get(url)
-        if captured is None:
-            return False, None
-        result = parse_document(captured.content)
-        if not result.ok:
-            return False, None
-        self._parsed[url] = result.value
-        return True, result.value
-
-
-def _resolve_item(docs: _Documents, url: str, item: Any, tokens: tuple[str, ...], three_one: bool):
+def _resolve_item(docs: Documents, url: str, item: Any, tokens: tuple[str, ...], three_one: bool):
     """Follow a path item's `$ref` chain. Returns (item, url, tokens, reason); reason is set on failure."""
-    seen = set()
-    for _ in range(MAX_REF_CHAIN):
-        if not isinstance(item, dict):
-            return None, url, tokens, "The path item is not an object."
-        ref = item.get("$ref")
-        if ref is None:
-            return item, url, tokens, None
-        reference = classify_reference(ref, url) if isinstance(ref, str) else None
-        if isinstance(reference, LocalReference):
-            target_url, target_tokens = url, reference.tokens
-        elif isinstance(reference, ExternalReference):
-            target_url, target_tokens = reference.url, reference.tokens
-        else:
-            return None, url, tokens, f"The path item reference {str(ref)[:80]!r} is not supported."
-        if (target_url, target_tokens) in seen:
-            return None, url, tokens, "The path item references form a cycle."
-        seen.add((target_url, target_tokens))
-        found, document = docs.get(urldefrag(target_url)[0])
-        if not found:
-            return None, url, tokens, f"The referenced document {urldefrag(target_url)[0]!r} was not captured."
-        found, target = resolve_pointer(document, target_tokens)
-        if not found:
-            return None, url, tokens, f"The reference target {json_pointer(target_tokens)!r} does not exist."
-        siblings = {k: v for k, v in item.items() if k != "$ref"} if three_one else {}  # 3.0 ignores siblings
-        if siblings and isinstance(target, dict):
-            target = {**target, **siblings}
-        item, url, tokens = target, urldefrag(target_url)[0], target_tokens
-    return None, url, tokens, "The path item reference chain is too long."
+    try:
+        for _ in range(8):
+            if not isinstance(item, dict):
+                return None, url, tokens, "The path item is not an object."
+            if "$ref" not in item:
+                return item, url, tokens, None
+            siblings = {k: v for k, v in item.items() if k != "$ref"} if three_one else {}  # 3.0 ignores siblings
+            target, url, tokens = docs.resolve(item["$ref"], url)
+            item = {**target, **siblings} if siblings and isinstance(target, dict) else target
+        return None, url, tokens, "The path item reference chain is too long."
+    except Unresolved as error:
+        return None, url, tokens, str(error)
 
 
 def _server(server: Any):
@@ -115,7 +82,7 @@ def _server(server: Any):
 
 
 def read_contract(package: ValidatedContractPackage, side: str) -> ContractView:
-    docs = _Documents(package)
+    docs = Documents(package)
     contract = package.parsed_contract
     view = ContractView()
     three_one = str(contract.get("openapi", "")).startswith("3.1")
@@ -146,7 +113,9 @@ def read_contract(package: ValidatedContractPackage, side: str) -> ContractView:
                     "ambiguous_path_template", f"The {side} contract declares {existing!r} and {declared!r}, which "
                     "differ only in parameter names. Its operations on this path were not compared.", declared, True))
                 continue
-            view.operations[key] = Operation(method.upper(), declared, SourceLocation(url, json_pointer((*tokens, method))))
+            view.operations[key] = Operation(
+                method.upper(), declared, SourceLocation(url, json_pointer((*tokens, method))),
+                resolved[method], resolved, url, tokens, docs)
     for normalized in view.unresolved:  # an ambiguous path must not leave one half of its operations behind
         for key in [k for k in view.operations if k[1] == normalized]:
             del view.operations[key]
