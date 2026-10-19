@@ -846,7 +846,7 @@ every discovery result; `normalize` is #11's normalization function and `compare
 from radar.discovery.evaluation import package_fingerprint
 from radar.discovery.serialization import outcome_to_dict
 from radar.domain.discovery import DiscoveryStatus
-from radar.storage.errors import ConflictError
+from radar.storage.errors import ConflictError, StoreError
 from radar.storage.records import AMBIGUOUS, CHANGED, FAILED, INITIAL, UNCHANGED, UNCONFIRMED
 from radar.storage.repository import Store
 
@@ -872,15 +872,26 @@ def record_check(store, source_id, outcome, normalize, compare, usage=None):
             error=f"Discovery ended with {outcome.status.value}.", detail=detail,
         )
 
+    def failed(stage, error):
+        # Close the check on any error, so it never stays 'running' until a restart.
+        return store.fail_check(check.id, stage=stage, reason=f"{stage}_failed",
+                                error=str(error) or type(error).__name__, detail=detail)
+
     package = outcome.package
-    normalized, version = normalize(package)  # bytes and a version string, from #11
+    try:
+        normalized, version = normalize(package)  # bytes and a version string, from #11
+    except Exception as error:
+        return failed("normalization", error)
     for _ in range(MAX_ATTEMPTS):
         before = store.latest_snapshot(source_id)
         if before is None:
             result, changes, limitations = INITIAL, [], []
         else:
-            reference = store.read_contract(before.id)
-            changes, limitations = compare(reference, normalized, version)
+            try:
+                reference = store.read_contract(before.id)
+                changes, limitations = compare(reference, normalized, version)
+            except Exception as error:
+                return failed("comparison", error)
             same = reference.normalized == normalized and before.normalization_version == version
             result = UNCHANGED if same else CHANGED
         try:
@@ -895,6 +906,8 @@ def record_check(store, source_id, outcome, normalize, compare, usage=None):
             if store.get_check(check.id).finished:
                 raise  # finished elsewhere: nothing more to do
             # Another check moved the reference: compare again against the new one.
+        except StoreError as error:
+            return failed("storage", error)  # e.g. the disk is full; nothing was saved
     return store.fail_check(
         check.id, stage="comparison", reason="reference_kept_moving",
         error=f"The reference changed {MAX_ATTEMPTS} times while comparing.", detail=detail,
@@ -909,13 +922,16 @@ Rules the example relies on:
   reference; `changes` are only accepted for `changed`. Mistakes raise `ValueError` before anything is written.
 - **Stale reference.** `before_snapshot_id` must still be the source's latest snapshot when the check is
   saved; otherwise `ConflictError`, and nothing is saved. Compare again with a bounded number of attempts.
+- **Every check is closed.** Any error after `begin_check` should end in `fail_check`; a check left
+  `running` is only closed at the next restart, and then wrongly as `interrupted`.
 - **Failures never move the reference.** `fail_check` records which snapshot was the reference at the time.
 - **`detail`** (both methods) is an optional JSON object for anything else about the run, such as an LLM
   usage summary. The existing LLM ledger stays the authority on spending.
 
 `fail_check(check_id, *, stage, reason, error, outcome="failed", detail=None, finished_at=None)`:
 `stage` is one of `discovery`, `fetch`, `capture`, `validation`, `normalization`, `comparison`, `storage`,
-`interrupted`; `reason` is a short lowercase code such as `inaccessible` (letters, digits, `_`; up to 64);
+`interrupted`; `reason` is a short code such as `inaccessible` (lowercase letters, digits and `_`, starting with a letter,
+up to 64 characters);
 `error` is a message for people (cut at 4,000 characters); `outcome` is `failed`, `ambiguous` or
 `unconfirmed`.
 
@@ -970,14 +986,14 @@ in API JSON is the API's choice (#13).
 |---|---|
 | `add_source(locator, config=None)`, `get_source(id)`, `find_sources(locator)`, `list_sources(limit=None)`, `update_source_config(id, config)` | `Source(id, locator, config, created_at, latest_snapshot_id)` |
 | `get_check(id)`, `list_checks(source_id, limit=None)` (newest first), `list_running_checks()` | `CheckRun(id, source_id, status, started_at, finished_at, before_snapshot_id, snapshot_id, failure_stage, failure_reason, error, detail, limitations)`, with `.finished` and `.succeeded` |
-| `get_snapshot(id)`, `latest_snapshot(source_id)`, `list_snapshots(source_id, limit=None)` (newest first) | `Snapshot(id, source_id, fingerprint, captured_at, normalization_version, openapi_version, content_fingerprint, media_type, provenance)` |
+| `get_snapshot(id)`, `latest_snapshot(source_id)` (the current reference), `list_snapshots(source_id, limit=None)` (latest capture time first) | `Snapshot(id, source_id, fingerprint, captured_at, normalization_version, openapi_version, content_fingerprint, media_type, provenance)` |
 | `snapshot_documents(snapshot_id)` | `SnapshotDocument(snapshot_id, source_url, path, retrieved_at, media_type, is_root)`, root first |
 | `read_contract(snapshot_id)` | `StoredContract(fingerprint, entry_point, documents, normalized, normalization_version)`; `.original` is the root document's bytes |
 | `get_change(id)`, `list_changes(check_id=…)` (in order) or `list_changes(source_id=…)` (newest check first) | `ChangeRecord(id, check_id, source_id, before_snapshot_id, after_snapshot_id, ordinal, change_type, location, direction, classification, summary, rationale, before_value, after_value, details)` |
 
 ```python
 with Store() as store:
-    source = store.add_source("https://api.example.com")
+    source = store.find_sources("https://api.example.com")[0]
     for check in store.list_checks(source.id, limit=20):
         print(check.started_at, check.status, check.failure_reason or "")
     latest = store.latest_snapshot(source.id)      # None before the first capture
@@ -989,7 +1005,8 @@ with Store() as store:
 A snapshot's `provenance` holds: `source_url`, `discovery_method`, `discovery_source`, `source_kind`
 (`provider` or `directory_copy`), `evidence` (each with `criterion`, `description`, `source_url`, `outcome`),
 `candidate_limitations` and `package_limitations`. `captured_at` is when the last of its documents was
-retrieved. Records are new objects on every call, so changing one never changes what is stored.
+retrieved. Use `latest_snapshot` for the current reference, not the first item of `list_snapshots`: when
+two checks overlap, the one saved last can hold an earlier capture. Records are new objects on every call, so changing one never changes what is stored.
 
 IDs look like `src_`, `chk_`, `snap_` or `chg_` followed by 32 hex characters and never change. Times are
 timezone-aware UTC `datetime`s.
@@ -1049,6 +1066,9 @@ it, installed outside the checkout.
   systems. Shared or cloud storage is a deployment-time decision.
 - **Windows durability.** Windows cannot sync folder entries to disk, so after a power cut (not a crash) the
   last bundle rename may be lost; `read_contract` then raises `StoreError` rather than return wrong content.
+- **A damaged bundle is not repaired automatically.** If files of a stored bundle are changed or lost on
+  disk, `read_contract` raises `StoreError`, and so does a later check that captures the same content,
+  until the folder is restored from a backup. Wrong content is never returned or reused.
 - **Unreferenced bundles are kept.** A crash after a bundle is complete but before its records are saved
   leaves the bundle unused. It is valid, small, and reused if the same contract is captured again.
 - **No paging cursor.** List calls take `limit` but have no offset or cursor yet.
