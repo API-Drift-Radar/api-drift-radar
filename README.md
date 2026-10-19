@@ -143,7 +143,7 @@ api-drift-radar/
 └── .radar/                     # Ignored local runtime data
 ```
 
-The planned monitoring database is `.radar/radar.db`; it will be created when database initialization is implemented. Contract artifacts will live under `.radar/contracts/`.
+Monitoring history is stored in `.radar/radar.db` (SQLite, created and migrated automatically) and captured contracts in `.radar/contracts/` (immutable, one copy per distinct content). See [setup](docs/setup.md) and the storage section of [component interfaces](docs/component-interfaces.md#storage-contract-snapshots-and-check-history-issue-10).
 
 ## Discovery search budget
 
