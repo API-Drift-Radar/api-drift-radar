@@ -1073,3 +1073,29 @@ it, installed outside the checkout.
   leaves the bundle unused. It is valid, small, and reused if the same contract is captured again.
 - **No paging cursor.** List calls take `limit` but have no offset or cursor yet.
 - **No retention.** Nothing is ever deleted, so history and contract files grow with every changed contract.
+
+
+## Contract comparison, operations (issue #11, increment 1)
+
+```python
+from radar.comparison.openapi import compare_contracts, result_to_dict
+result = compare_contracts(before_package, after_package)   # two ValidatedContractPackage; pure, no I/O
+```
+
+- **Perspective:** a client that calls the API. Findings are potential risk under Radar's rules, not proof of breakage.
+- **Rules (`operations-1`):** `operation.removed` is `potentially_breaking`; `operation.added` is
+  `non_breaking_under_rules`; `servers.changed` is `uncertain`. A renamed path is a removal plus an addition. Path
+  parameter names are normalized (`/pets/{id}` equals `/pets/{petId}`).
+- **Finding:** `key` (deterministic, no timestamps; storage deduplicates on it, and owns persistent record IDs),
+  `rule_id`, `category`, `change_kind`, `direction` (`request`/`response`/`none`; `none` for whole operations), method,
+  path, `before_present`/`after_present` (absence is never a null value), `before_value`/`after_value`, and a
+  `before_location`/`after_location` (`document_url` plus JSON Pointer; a path item reached through `$ref` is located in
+  the document that defines it).
+- **Limitations and coverage:** `coverage.complete` is false while parameters, bodies, schemas and documentation are
+  unassessed, so an empty `findings` list never means "unchanged". Limitations also name unresolved path items,
+  ambiguous path templates, webhooks, and inputs that are `unconfirmed` or a `directory_copy` (the comparator still
+  compares; monitoring decides whether to alert).
+- **Measured:** `python -m radar.comparison.openapi.evaluation` scores the labeled fixtures in
+  `backend/tests/fixtures/comparison/` (detection precision/recall, classification accuracy). The labels are written
+  from the rules, and the fixture count is small, so it demonstrates the rules, not real-world accuracy.
+- **Example:** `docs/examples/comparison/mixed-changes.json`, checked by a test.

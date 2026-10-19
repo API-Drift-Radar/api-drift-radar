@@ -1,0 +1,95 @@
+{
+  "description": "Removal, addition, a parameter rename (no finding), a wording change (not assessed) and a servers change.",
+  "result": {
+    "ruleset_version": "operations-1",
+    "findings": [
+      {
+        "key": "servers.changed",
+        "rule_id": "servers.changed",
+        "category": "uncertain",
+        "change_kind": "changed",
+        "direction": "none",
+        "method": null,
+        "path": null,
+        "before_present": true,
+        "after_present": true,
+        "before_value": [
+          "https://api.acme.com/v1"
+        ],
+        "after_value": [
+          "https://api.acme.com/v2"
+        ],
+        "before_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/servers"
+        },
+        "after_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/servers"
+        },
+        "explanation": "The declared servers changed. Effective request URLs may have moved even where the declared paths are the same; this comparison does not resolve effective URLs."
+      },
+      {
+        "key": "operation.added|GET|/owners",
+        "rule_id": "operation.added",
+        "category": "non_breaking_under_rules",
+        "change_kind": "added",
+        "direction": "none",
+        "method": "GET",
+        "path": "/owners",
+        "before_present": false,
+        "after_present": true,
+        "before_value": null,
+        "after_value": null,
+        "before_location": null,
+        "after_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/paths/~1owners/get"
+        },
+        "explanation": "GET /owners is newly declared. Existing clients do not depend on it, so it does not affect them."
+      },
+      {
+        "key": "operation.removed|DELETE|/pets/{}",
+        "rule_id": "operation.removed",
+        "category": "potentially_breaking",
+        "change_kind": "removed",
+        "direction": "none",
+        "method": "DELETE",
+        "path": "/pets/{id}",
+        "before_present": true,
+        "after_present": false,
+        "before_value": null,
+        "after_value": null,
+        "before_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/paths/~1pets~1{id}/delete"
+        },
+        "after_location": null,
+        "explanation": "DELETE /pets/{id} is no longer declared. Existing clients calling this operation may be affected."
+      }
+    ],
+    "limitations": [
+      {
+        "code": "scope_not_assessed",
+        "scope": "contract",
+        "blocks_classification": false,
+        "explanation": "Not assessed yet: parameters, request bodies, response schemas, documentation, path-level and operation-level servers, callbacks. No findings in this result does not mean the rest of the contract is unchanged."
+      }
+    ],
+    "coverage": {
+      "complete": false,
+      "assessed": [
+        "operations",
+        "servers"
+      ],
+      "not_assessed": [
+        "parameters",
+        "request bodies",
+        "response schemas",
+        "documentation",
+        "path-level and operation-level servers",
+        "callbacks"
+      ]
+    }
+  }
+}
