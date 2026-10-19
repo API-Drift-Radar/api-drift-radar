@@ -1,0 +1,11 @@
+{
+  "findings": [
+    {
+      "rule_id": "servers.changed",
+      "method": "",
+      "path": "",
+      "category": "uncertain"
+    }
+  ],
+  "limitations": []
+}

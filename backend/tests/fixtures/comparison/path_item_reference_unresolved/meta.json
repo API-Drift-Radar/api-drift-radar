@@ -1,0 +1,3 @@
+{
+  "rationale": "An uncaptured referenced document must not be read as \"all operations removed\"."
+}

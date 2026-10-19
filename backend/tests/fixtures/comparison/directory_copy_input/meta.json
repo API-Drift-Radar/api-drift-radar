@@ -1,0 +1,6 @@
+{
+  "after": {
+    "source_kind": "directory_copy"
+  },
+  "rationale": "A directory copy may be older than the provider contract; still compared, with a limitation."
+}

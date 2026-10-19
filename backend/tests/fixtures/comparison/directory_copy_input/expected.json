@@ -1,0 +1,13 @@
+{
+  "findings": [
+    {
+      "rule_id": "operation.removed",
+      "method": "DELETE",
+      "path": "/pets/{id}",
+      "category": "potentially_breaking"
+    }
+  ],
+  "limitations": [
+    "directory_copy_source"
+  ]
+}

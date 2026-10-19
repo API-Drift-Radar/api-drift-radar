@@ -1,0 +1,6 @@
+{
+  "before": {
+    "confirmed": false
+  },
+  "rationale": "An unconfirmed contract is compared with a limitation saying differences are not drift."
+}
