@@ -387,11 +387,50 @@ class InputValidationTests(CompleteCheckTestCase):
             dict(normalization_version=""),
             dict(content_fingerprint=7),
             dict(limitations="not a list"),
+            dict(detail=["not", "an", "object"]),
+            dict(detail={"cost": float("nan")}),
+            dict(detail={"when": T0}),
             dict(finished_at=T0 - timedelta(seconds=1)),
         ]
         for case in cases:
             with self.subTest(case=list(case)[0]):
                 self.assertRefused((ValueError, TypeError), **case)
+
+
+class DetailTests(CompleteCheckTestCase):
+    """Extra information about a run, such as an LLM usage summary."""
+
+    USAGE = {"llm_usage": {"requests": 2, "input_tokens": 1834, "output_tokens": 212, "cost_usd": 0.0041}}
+
+    def test_detail_is_stored_with_a_successful_check(self):
+        check = self.capture(INITIAL, detail=self.USAGE)
+        self.assertEqual(check.detail, self.USAGE)
+        self.assertEqual(self.store.get_check(check.id).detail, self.USAGE)
+
+    def test_detail_defaults_to_empty(self):
+        check = self.capture(INITIAL)
+        self.assertEqual(self.store.get_check(check.id).detail, {})
+
+    def test_detail_survives_reopening(self):
+        check = self.capture(INITIAL, detail=self.USAGE)
+        self.store.close()
+        self.assertEqual(self.open_store().get_check(check.id).detail, self.USAGE)
+
+    def test_returned_detail_cannot_change_what_is_stored(self):
+        check = self.capture(INITIAL, detail=self.USAGE)
+        check.detail["llm_usage"]["requests"] = 99
+        self.assertEqual(self.store.get_check(check.id).detail["llm_usage"]["requests"], 2)
+
+    def test_oversized_detail_is_refused_before_anything_is_written(self):
+        check = self.store.begin_check(self.source.id)
+        huge = {"blob": "x" * (5 * 1024 * 1024)}
+        with self.assertRaisesRegex(ValueError, "larger than"):
+            self.store.complete_check(
+                check.id, outcome=INITIAL, package=make_package(), normalized=NORM_V1,
+                normalization_version=RULES, detail=huge,
+            )
+        self.assertEqual(self.store.get_check(check.id).status, RUNNING)
+        self.assertFalse((self.data / "contracts").exists() and self.bundle_dirs())
 
 
 class InterruptedWriteTests(CompleteCheckTestCase):

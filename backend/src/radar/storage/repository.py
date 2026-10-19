@@ -190,7 +190,9 @@ class Store:
         ``outcome`` is ``failed``; ``ambiguous`` when discovery found several
         candidate contracts; or ``unconfirmed`` when it found one it could not
         confirm belongs to this API. For the last two, put the candidates and
-        their evidence in ``detail`` and use stage ``discovery``. ``stage`` says
+        their evidence in ``detail`` and use stage ``discovery``. ``detail``
+        can also carry other information about the run, such as a summary of
+        LLM usage. ``stage`` says
         where the check stopped (one of ``FAILURE_STAGES``); ``reason`` is a
         short code such as ``inaccessible`` or ``not_found``; ``error`` is a
         human-readable message, truncated if very long.
@@ -240,6 +242,7 @@ class Store:
         changes=(),
         limitations=(),
         content_fingerprint=None,
+        detail=None,
         finished_at=None,
     ):
         """Finish a running check with a captured contract, as a new snapshot.
@@ -254,7 +257,9 @@ class Store:
         ``changes`` (``ChangeInput`` records, in the comparison's order) are
         only allowed for ``changed``; ``limitations`` lists what the
         comparison could not analyse. ``content_fingerprint`` is discovery's
-        format-independent identity of the contract, if available.
+        format-independent identity of the contract, if available. ``detail``
+        is an optional JSON object of extra information about the run, such
+        as a summary of LLM usage; it is stored with the check as given.
 
         Contract files are written and synced first; then the snapshot, its
         document origins, the finished check, its changes and the source's
@@ -280,6 +285,7 @@ class Store:
         if isinstance(limitations, (str, bytes, bytearray, Mapping)):
             raise TypeError("limitations must be a list of entries, not a single value.")
         limitations_json = _to_json(list(limitations), "limitations", list)
+        detail_json = _to_json(detail if detail is not None else {}, "detail", dict)
         if not isinstance(normalized, (bytes, bytearray)):
             raise TypeError("normalized must be bytes.")
         normalized = bytes(normalized)
@@ -373,9 +379,9 @@ class Store:
                 )
             self._db.execute(
                 "UPDATE check_runs SET status = ?, finished_at = ?, before_snapshot_id = ?, "
-                "snapshot_id = ?, limitations_json = ? WHERE id = ?",
+                "snapshot_id = ?, limitations_json = ?, detail_json = ? WHERE id = ?",
                 (outcome, finished_text, before_snapshot_id, snapshot_id, limitations_json,
-                 check_id),
+                 detail_json, check_id),
             )
             for ordinal, row in enumerate(change_rows):
                 self._db.execute(
