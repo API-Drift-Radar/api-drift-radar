@@ -28,7 +28,7 @@
           "pointer": "/servers"
         },
         "explanation": "The declared servers changed. Effective request URLs may have moved even where the declared paths are the same; this comparison does not resolve effective URLs.",
-        "subject": null
+        "subject": "servers"
       },
       {
         "key": "operation.added|GET|/owners",
@@ -41,7 +41,10 @@
         "before_present": false,
         "after_present": true,
         "before_value": null,
-        "after_value": null,
+        "after_value": {
+          "method": "GET",
+          "path": "/owners"
+        },
         "before_location": null,
         "after_location": {
           "document_url": "https://api.acme.com/openapi.json",
@@ -83,7 +86,10 @@
         "path": "/pets/{id}",
         "before_present": true,
         "after_present": false,
-        "before_value": null,
+        "before_value": {
+          "method": "DELETE",
+          "path": "/pets/{id}"
+        },
         "after_value": null,
         "before_location": {
           "document_url": "https://api.acme.com/openapi.json",
@@ -167,7 +173,7 @@
           "document_url": "https://api.acme.com/openapi.json",
           "pointer": "/servers"
         },
-        "subject": null,
+        "subject": "servers",
         "example_key": "servers.changed",
         "explanation": "The declared servers changed. Effective request URLs may have moved even where the declared paths are the same; this comparison does not resolve effective URLs."
       }

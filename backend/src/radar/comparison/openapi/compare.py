@@ -54,6 +54,7 @@ def _removed(operation) -> ContractFinding:
         key=f"operation.removed|{operation.method}|{normalize_path(operation.declared_path)}", rule_id="operation.removed",
         category=POTENTIALLY_BREAKING, change_kind=REMOVED, direction=NO_DIRECTION, method=operation.method,
         path=operation.declared_path, before_present=True, after_present=False,
+        before_value={"method": operation.method, "path": operation.declared_path},
         before_location=operation.location,
         explanation=f"{operation.method} {operation.declared_path} is no longer declared. Existing clients calling "
                     "this operation may be affected.")
@@ -64,6 +65,7 @@ def _added(operation) -> ContractFinding:
         key=f"operation.added|{operation.method}|{normalize_path(operation.declared_path)}", rule_id="operation.added",
         category=NON_BREAKING, change_kind=ADDED, direction=NO_DIRECTION, method=operation.method,
         path=operation.declared_path, before_present=False, after_present=True,
+        after_value={"method": operation.method, "path": operation.declared_path},
         after_location=operation.location,
         explanation=f"{operation.method} {operation.declared_path} is newly declared. Existing clients do not "
                     "depend on it, so it does not affect them.")
@@ -107,7 +109,7 @@ def _compare_servers(before: ContractView, after: ContractView, limitations: lis
         key="servers.changed", rule_id="servers.changed", category=UNCERTAIN, change_kind=CHANGED,
         direction=NO_DIRECTION, method=None, path=None, before_present=True, after_present=True,
         before_value=urls(before), after_value=urls(after),
-        before_location=before.servers_location, after_location=after.servers_location,
+        before_location=before.servers_location, after_location=after.servers_location, subject="servers",
         explanation="The declared servers changed. Effective request URLs may have moved even where the declared "
                     "paths are the same; this comparison does not resolve effective URLs.")]
 

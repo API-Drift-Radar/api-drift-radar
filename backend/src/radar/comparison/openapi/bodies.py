@@ -68,7 +68,8 @@ def _media_finding(rule, category, kind, operation, name, before, after, explana
     return ContractFinding(
         key=f"{rule}|{operation.method}|{normalize_path(operation.declared_path)}|request-body:{name}", rule_id=rule,
         category=category, change_kind=kind, direction=REQUEST, method=operation.method, path=operation.declared_path,
-        before_present=before is not None, after_present=after is not None, before_value=None, after_value=None,
+        before_present=before is not None, after_present=after is not None,
+        before_value=None if before is None else {"media_type": name}, after_value=None if after is None else {"media_type": name},
         before_location=location(before), after_location=location(after), explanation=explanation,
         subject=f"request body ({name})")
 

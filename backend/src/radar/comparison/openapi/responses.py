@@ -65,8 +65,8 @@ def _finding(rule, category, kind, operation, status, before, after, explanation
         key=f"{rule}|{operation.method}|{normalize_path(operation.declared_path)}|{scope}", rule_id=rule,
         category=category, change_kind=kind, direction=RESPONSE, method=operation.method, path=operation.declared_path,
         before_present=before is not None, after_present=after is not None,
-        before_value=None if before is None or media else {"media_types": sorted(before.media)},
-        after_value=None if after is None or media else {"media_types": sorted(after.media)},
+        before_value=None if before is None else ({"media_type": media} if media else {"media_types": sorted(before.media)}),
+        after_value=None if after is None else ({"media_type": media} if media else {"media_types": sorted(after.media)}),
         before_location=where(before), after_location=where(after), explanation=explanation,
         subject=f"response {status}" + (f" ({media})" if media else ""))
 

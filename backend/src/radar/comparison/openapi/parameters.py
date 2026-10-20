@@ -137,7 +137,7 @@ def _finding(rule, category, kind, operation, before, after, explanation, before
         before_value=before_value if before_value is not None else (_shown(before) if before else None),
         after_value=after_value if after_value is not None else (_shown(after) if after else None),
         before_location=before.where if before else None, after_location=after.where if after else None,
-        explanation=explanation)
+        explanation=explanation, subject=f"{parameter.location_in} parameter {parameter.name}")
 
 
 def _schema_pairs(old: Parameter, new: Parameter):

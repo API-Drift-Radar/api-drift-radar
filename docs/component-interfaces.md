@@ -1174,16 +1174,36 @@ result = compare_contracts(before_package, after_package)   # two ValidatedContr
   uncertain), 811 of the findings being the same few dozen removed response properties (such as `has_downloads` and
   `master_branch`) repeated per operation. Those removals match deprecated GitHub fields, but this was a sanity check by
   inspection, not a labeled measurement.
-- **Storage handoff (for #10):** the comparator takes `ValidatedContractPackage` objects and does not care how they were
-  obtained. To rebuild one after a restart, storage must keep, for the root document and every referenced document, the
-  exact bytes, the URL (`source_url`) and the media type; the package's `openapi_version`; and from the candidate its
-  `source_url`, `discovery_method`, `discovery_source`, `source_kind` and the matching `evidence` (whether a package is
-  confirmed is derived from that evidence, see `is_confirmed`). `parsed_contract` is `parse_document(root bytes).value`.
-  A test reloads every fixture package this way and requires an identical result. The result (`result_to_dict`) is plain
-  JSON; storage attaches it to the two snapshot ids and owns persistent record ids. A finding's `key` is deterministic
-  and free of timestamps, so the same finding in two checks can be recognised; it is not unique across checks.
-  Not built, and not needed by the comparator: a separate "normalized contract" representation. Raw byte identity,
-  semantic equality and finding identity are separate things; the comparator only needs the first to rebuild the
-  package. If storage wants to persist a normalized form, that is a new interface to agree.
+- **With storage (#10):** the storage runner calls `normalize(package) -> (bytes, version)` and
+  `compare(reference, normalized, version) -> (changes, limitations)`. `radar.comparison.openapi.stored` provides both
+  as `normalize_contract` and `compare_stored`.
+  - `normalize_contract(package)` returns canonical JSON (sorted keys, no timestamps) of the root document and every
+    captured referenced document that parses, with the version `openapi-canonical-1`. A capture that differs only in
+    file formatting or key order gives identical bytes, so storage records `unchanged`. A change the comparison does not
+    report (for example reordering a `required` list) still changes the bytes: that check is `changed` with no change
+    records.
+  - `compare_stored(reference, normalized, version, *, before_source_kind="provider", after_source_kind="provider")`
+    rebuilds both sides from their normalized bytes alone (it never reads the original documents) and returns
+    `ChangeInput` records, in the comparison's order, and a list of limitation entries
+    (`{code, scope, explanation, blocks_classification}`) for `complete_check`. Pass a snapshot's
+    `provenance["source_kind"]` as `before_source_kind` to have a directory copy noted as a limitation. It raises
+    `ValueError` if either side was not produced by `normalize_contract` or has an unsupported version, which the
+    runner records as a failed `comparison` stage; the reference is then kept.
+  - Snapshots are always confirmed contracts (an unconfirmed outcome never becomes a snapshot), so rebuilt packages count
+    as confirmed.
+  - **Mapping to `ChangeInput`:** `change_type` is the rule id with `_` for `.` (`operation_removed`,
+    `schema_property_added`); `classification` uses storage's spelling (`non_breaking_under_rules` is
+    `non_breaking`); `direction` is `request`, `response` or `None`; `summary` is the first sentence of the explanation
+    and `rationale` the rest; `location` reads like `GET /pets > response 200 (application/json) > [].name`; `before` and
+    `after` are `ABSENT` when the thing did not exist on that side, and otherwise a JSON value (a null means "no
+    restriction" or "flag not set" for type, enum and read/write-only changes); `details` carries the rule id, the
+    finding key, the ruleset version, the subject, method, path and both locations in the contract documents. The change
+    records are one per finding; use `finding_groups` for a summary.
+  - **Tested together:** `backend/tests/integration/test_comparison_with_storage.py` runs the runner from the storage
+    section against a real `Store`: first capture, a reformatted capture (`unchanged`, still its own snapshot), a
+    changed capture with its classified changes read back after reopening the store, a failed check that leaves the
+    reference alone, a reference the comparison cannot read, and a directory-copy reference.
+  - **Dependency direction:** storage does not depend on comparison; `stored.py` imports storage's `ChangeInput` and
+    vocabulary, as the storage section intends (the runner maps findings to storage's own type).
 - **Examples:** `docs/examples/comparison/mixed-changes.json`, `request-body-property-added.json`,
   `shared-schema-two-directions.json` and `documentation-and-structure.json`, checked by a test.

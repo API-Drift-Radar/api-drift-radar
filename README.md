@@ -20,7 +20,7 @@ The repository has been reorganized into one Python backend package and a separa
 
 **Milestone 2 — Contract discovery and monitoring: current development focus.**
 
-Discovery (`radar.discovery.orchestrator.discover`) is implemented and tested; monitoring, the HTTP API, the frontend, OpenAPI comparison and SQLite persistence are not. There is no running HTTP API or dashboard yet.
+Discovery (`radar.discovery.orchestrator.discover`), storage (`radar.storage.repository.Store`) and OpenAPI contract comparison (`radar.comparison.openapi`) are implemented and tested; the monitoring runner, the HTTP API and the frontend are not. There is no running HTTP API or dashboard yet.
 
 What discovery does, within shared request, time, size and host limits:
 
@@ -30,6 +30,17 @@ What discovery does, within shared request, time, size and host limits:
 - Reports unsupported formats, documentation-only data, authentication barriers and search coverage as optional details. An optional, default-off language-model fallback with a cost ledger and hard spending limits is available.
 
 Sample outcomes for the API and frontend owners are in `docs/examples/discovery-outcomes/`; see `docs/component-interfaces.md` for interfaces and status.
+
+### Contract comparison (issue #11)
+
+`radar.comparison.openapi.compare_contracts(before, after)` takes two validated contract packages and returns findings: what changed, where, the before and after values, and a category from the point of view of a client of the earlier contract.
+
+- **Categories:** `potentially_breaking`, `non_breaking_under_rules`, `documentation_only` and `uncertain`. Request and response changes follow different rules (a request that accepts more is safe; a response that returns more is not).
+- **Covered:** operations, servers, parameters, request bodies, responses, schemas (types, nullability, enums, required fields, properties, nesting and `$ref`), documentation, deprecation and `operationId`. Not covered, and reported as such in every result: response headers and links, security requirements, tags, callbacks and webhooks. `allOf`/`oneOf`/`anyOf`, formats and limits are reported as `uncertain`.
+- **Honest by construction:** a result always lists what was and was not compared, so "no findings" never means "unchanged"; anything unreadable is a limitation, not a guess.
+- **Try it:** `python -m radar.comparison.openapi before.yaml after.yaml` compares two files and prints the distinct changes (`--json` for everything).
+- **Measure it:** `python -m radar.comparison.openapi.evaluation` scores labeled fixtures (a development set and a held-out set) with a confusion matrix; `--json` for a machine-readable report.
+- **With storage:** `radar.comparison.openapi.stored` provides `normalize_contract` and `compare_stored`, the two functions the runner in the storage documentation needs. See the comparison section of `docs/component-interfaces.md`.
 
 ## Try the current CLI
 
@@ -120,7 +131,7 @@ api-drift-radar/
 │   ├── pyproject.toml          # Python dependencies and CLI entry point
 │   ├── src/radar/
 │   │   ├── discovery/          # Normalization, bounded fetching, candidate search, fallback input reduction
-│   │   ├── comparison/         # Existing JSON structure engine
+│   │   ├── comparison/         # JSON structure engine; openapi/ compares two contract packages
 │   │   ├── storage/            # SQLite history and immutable contract files
 │   │   │   └── migrations/     # SQLite schema migrations, shipped in the package
 │   │   ├── monitoring/         # Check workflow and scheduling scaffold
