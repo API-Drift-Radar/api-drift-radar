@@ -77,21 +77,22 @@ class Documents:
             seen.add((url, tokens))
         raise Unresolved("The reference chain is too long.")
 
-    def expand(self, node: Any, url: str):
+    def expand(self, node: Any, url: str, keep_annotations: bool = False):
         """A comparable copy of `node` with every `$ref` replaced by its target and annotations removed.
 
         Names of referenced components do not appear in the result, so renaming a component without changing its
-        content is not a difference. A cycle is cut with a marker naming its target.
+        content is not a difference. A cycle is cut with a marker naming its target. With `keep_annotations` the
+        annotations of each schema (title, description, examples, externalDocs, deprecated) are kept in a
+        `$annotations` entry, so documentation can be compared without affecting the structural comparison.
         """
-        budget = [MAX_EXPAND_NODES]
-        return self._expand(node, url, (), budget, 0, False)
+        return self._expand(node, url, (), [MAX_EXPAND_NODES], 0, False, keep_annotations)
 
-    def _expand(self, node, url, stack, budget, depth, in_name_map):
+    def _expand(self, node, url, stack, budget, depth, in_name_map, keep):
         budget[0] -= 1
         if budget[0] < 0 or depth > MAX_EXPAND_DEPTH:
             raise Unresolved("The schema is too large or too deeply nested to compare.")
         if isinstance(node, list):
-            return [self._expand(child, url, stack, budget, depth + 1, False) for child in node]
+            return [self._expand(child, url, stack, budget, depth + 1, False, keep) for child in node]
         if not isinstance(node, dict):
             return node
         if "$ref" in node and not in_name_map:
@@ -99,15 +100,19 @@ class Documents:
             marker = (target_url, tokens)
             if marker in stack:
                 return {"$cycle": target_url + json_pointer(tokens)}
-            return self._expand(target, target_url, (*stack, marker), budget, depth + 1, False)
-        result = {}
+            return self._expand(target, target_url, (*stack, marker), budget, depth + 1, False, keep)
+        result, annotations = {}, {}
         for key, child in node.items():
             if not in_name_map and (key in ANNOTATIONS or (isinstance(key, str) and key.startswith("$comment"))):
+                if keep and key in ANNOTATIONS:
+                    annotations[key] = child
                 continue
             if not in_name_map and key in DATA_KEYS:
                 result[key] = child  # data, kept verbatim
             else:
-                result[key] = self._expand(child, url, stack, budget, depth + 1, not in_name_map and key in NAME_MAPS)
+                result[key] = self._expand(child, url, stack, budget, depth + 1, not in_name_map and key in NAME_MAPS, keep)
+        if annotations:
+            result["$annotations"] = annotations
         if not in_name_map:  # `required` and `enum` are sets: their order is not a difference
             if isinstance(result.get("required"), list) and all(isinstance(n, str) for n in result["required"]):
                 result["required"] = sorted(result["required"])

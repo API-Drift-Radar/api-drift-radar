@@ -30,15 +30,17 @@ from dataclasses import dataclass
 import json
 from typing import Any
 
+from radar.comparison.openapi.documentation import MISSING as DOC_MISSING, at, comparable
 from radar.comparison.openapi.references import Documents, Unresolved
 from radar.discovery.references import json_pointer
 from radar.domain.comparison import (
-    ADDED, CHANGED, NON_BREAKING, POTENTIALLY_BREAKING, REMOVED, REQUEST, UNCERTAIN, ComparisonLimitation,
-    ContractFinding, SourceLocation,
+    ADDED, CHANGED, DOCUMENTATION_ONLY, NO_DIRECTION, NON_BREAKING, POTENTIALLY_BREAKING, REMOVED, REQUEST, UNCERTAIN,
+    ComparisonLimitation, ContractFinding, SourceLocation,
 )
 
 MAX_CHANGES = 200
-HANDLED = frozenset({"type", "nullable", "enum", "properties", "required", "items", "readOnly", "writeOnly"})
+HANDLED = frozenset({"type", "nullable", "enum", "properties", "required", "items", "readOnly", "writeOnly", "$annotations"})
+DOC_RULES = frozenset({"documentation.changed", "deprecation.changed"})
 CONSTRAINTS = frozenset({
     "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "minLength", "maxLength", "pattern",
     "minItems", "maxItems", "uniqueItems", "minProperties", "maxProperties", "format", "default"})
@@ -145,6 +147,7 @@ class _Differ:
         if blocked:
             self.unclassified = True
         blocked = self._residual(before, after, steps, blocked)
+        self._annotations(before, after, steps)
         before_types, after_types = _types(before), _types(after)
         incompatible = self._types(before_types, after_types, steps, blocked)
         self._enum(before, after, steps, blocked)
@@ -174,6 +177,27 @@ class _Differ:
                        before.get(key), after.get(key), keyword=key,
                        before_present=key in before, after_present=key in after)
         return blocked
+
+    def _annotations(self, before, after, steps):
+        """Documentation and deprecation of this schema node. They never depend on direction or on blocked scopes."""
+        old, new = before.get("$annotations", {}), after.get("$annotations", {})
+        for key in sorted(old.keys() | new.keys(), key=str):
+            was, now = old.get(key, DOC_MISSING), new.get(key, DOC_MISSING)
+            if key == "deprecated":
+                if (was is True) == (now is True):
+                    continue
+                self._emit("deprecation.changed", NON_BREAKING, CHANGED, steps, False,
+                           f"The schema at {_where(steps)} is now deprecated. It still works today but may be removed later."
+                           if now is True else f"The schema at {_where(steps)} is no longer deprecated.",
+                           was is True, now is True, keyword=key)
+            elif was is DOC_MISSING or now is DOC_MISSING or comparable(was) != comparable(now):
+                kind = ADDED if was is DOC_MISSING else REMOVED if now is DOC_MISSING else CHANGED
+                verb = {ADDED: "was added", REMOVED: "was removed", CHANGED: "changed"}[kind]
+                self._emit("documentation.changed", DOCUMENTATION_ONLY, kind, steps, False,
+                           f"The {key} of the schema at {_where(steps)} {verb}. This is documentation; it does not "
+                           "change what the API accepts or returns.",
+                           None if was is DOC_MISSING else was, None if now is DOC_MISSING else now, keyword=key,
+                           before_present=was is not DOC_MISSING, after_present=now is not DOC_MISSING)
 
     def _types(self, before, after, steps, blocked) -> bool:
         """Report a type change. Returns True when the types are incompatible (nothing below is comparable)."""
@@ -327,7 +351,8 @@ def media_schema_ref(docs: Documents, media: tuple) -> SchemaRef:
 def compare_schemas(before: SchemaRef, after: SchemaRef, direction: str) -> tuple[list[SchemaChange], bool, bool]:
     """(changes, unclassified, truncated). Raises Unresolved if either schema cannot be expanded offline."""
     differ = _Differ(direction)
-    differ.diff(before.docs.expand(before.node, before.url), after.docs.expand(after.node, after.url))
+    differ.diff(before.docs.expand(before.node, before.url, keep_annotations=True),
+                after.docs.expand(after.node, after.url, keep_annotations=True))
     return differ.changes, differ.unclassified, differ.truncated
 
 
@@ -354,16 +379,19 @@ def schema_findings(operation_method: str, declared_path: str, normalized_path: 
             "were not listed.", scope_name))
     findings = []
     for change in changes:
+        doc = change.rule_id in DOC_RULES
         tail = _path_text(change.steps) + (f"|{change.keyword}" if change.keyword else "")
         subject = f"{label} > {_where(change.steps).strip('`')}" if change.steps else label
+        if doc:
+            subject += f" > {change.keyword}"
+        place = lambda ref: locate(ref.docs, ref.node, ref.url, ref.tokens, change.steps)  # noqa: E731
         findings.append(ContractFinding(
             key=f"{change.rule_id}|{operation_method}|{normalized_path}|{scope}|{tail}", rule_id=change.rule_id,
-            category=change.category, change_kind=change.change_kind, direction=direction, method=operation_method,
+            category=change.category, change_kind=change.change_kind, direction=NO_DIRECTION if doc else direction,
+            method=operation_method,
             path=declared_path, before_present=change.before_present, after_present=change.after_present,
             before_value=change.before_value, after_value=change.after_value,
-            before_location=locate(before.docs, before.node, before.url, before.tokens, change.steps)
-            if change.before_present else None,
-            after_location=locate(after.docs, after.node, after.url, after.tokens, change.steps)
-            if change.after_present else None,
+            before_location=(at(place(before), change.keyword) if doc else place(before)) if change.before_present else None,
+            after_location=(at(place(after), change.keyword) if doc else place(after)) if change.after_present else None,
             explanation=change.explanation, subject=subject))
     return findings
