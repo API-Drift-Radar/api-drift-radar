@@ -1,18 +1,21 @@
-"""Compare two validated OpenAPI contract packages: operations, servers and request parameters. Pure: no network,
+"""Compare two validated OpenAPI contract packages: operations, servers, request parameters and request bodies. Pure: no network,
 storage or model calls, and the inputs are never modified.
 
-Perspective: a client that calls the API. Rules (ruleset `parameters-1`):
+Perspective: a client that calls the API. Rules (ruleset `request-schemas-1`):
 
 - `operation.removed`  potentially breaking: existing clients may still call it.
 - `operation.added`    non-breaking under our rules: it removes nothing a client uses.
 - `servers.changed`    uncertain: effective URLs may have moved even where declared paths match.
 - `parameter.*`        request parameters of operations present in both contracts; see `parameters.py`.
+- `request_body.*`, `schema.*`  request bodies and the schemas inside them and inside parameters; see `bodies.py`
+                       and `schemas.py`.
 
-A renamed path is a removal plus an addition; renames are never guessed. Request bodies, response schemas and
-documentation are not assessed yet, and the result says so, so an empty finding list never means that the contracts
+A renamed path is a removal plus an addition; renames are never guessed. Response schemas and documentation
+are not assessed yet, and the result says so, so an empty finding list never means that the contracts
 are unchanged.
 """
 
+from radar.comparison.openapi.bodies import compare_request_bodies
 from radar.comparison.openapi.operations import ContractView, normalize_path, read_contract
 from radar.comparison.openapi.parameters import compare_parameters
 from radar.discovery.validation import HTTP_METHODS
@@ -22,9 +25,9 @@ from radar.domain.comparison import (
 )
 from radar.domain.discovery import ValidatedContractPackage, is_confirmed
 
-RULESET_VERSION = "parameters-1"
-ASSESSED = ("operations", "servers", "parameters")
-NOT_ASSESSED = ("request bodies", "response schemas", "documentation (descriptions, examples, deprecation)",
+RULESET_VERSION = "request-schemas-1"
+ASSESSED = ("operations", "servers", "parameters", "request bodies")
+NOT_ASSESSED = ("response schemas", "media-type encoding", "documentation (descriptions, examples, deprecation)",
                 "path-level and operation-level servers", "callbacks")
 _METHOD_ORDER = {method.upper(): index for index, method in enumerate(HTTP_METHODS)}
 
@@ -75,12 +78,13 @@ def _compare_operations(before: ContractView, after: ContractView) -> list[Contr
 
 
 def _compare_parameters(before: ContractView, after: ContractView, limitations: list) -> list[ContractFinding]:
-    """Parameters of operations present on both sides; an added or removed operation is reported once, as itself."""
+    """Parameters and request bodies of operations present on both sides; an added or removed operation is reported once, as itself."""
     skipped = set(before.unresolved) | set(after.unresolved)
     findings = []
     for key in sorted(before.operations.keys() & after.operations.keys()):
         if key[1] not in skipped:
             findings.extend(compare_parameters(before.operations[key], after.operations[key], limitations))
+            findings.extend(compare_request_bodies(before.operations[key], after.operations[key], limitations))
     return findings
 
 
