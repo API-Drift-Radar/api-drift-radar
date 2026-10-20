@@ -27,7 +27,7 @@ from radar.discovery.navigation import Navigator, NavigationLimits
 from radar.discovery.providers import search_provider_mappings
 from radar.domain.discovery import (
     ArtifactFinding, Coverage, DiscoveryAttempt, DiscoveryOutcome, DiscoveryRequest, DiscoveryStatus, LeadRecord,
-    MatchingEvidence,
+    MatchingEvidence, is_confirmed,
 )
 
 
@@ -63,17 +63,13 @@ def _attempt(stage, fetch: FetchResult, ignorable_blocks=False):
     return DiscoveryAttempt(fetch.requested_url, stage, outcome, f'{code}: {fetch.failure.reason}'), category
 
 
-# Checks that tie a contract to the requested API. A host match alone does not: any third-party document can declare
-# a host, and a partial or stale description of the host's API declares it too.
-CONFIRMING = ('provenance', 'operation', 'api_version', 'product')
 UNCONFIRMED_NOTE = ('This contract declares the target host, but nothing confirms it is the complete, current contract '
                     'of this API: it was reached through a link or a third-party index, and no requested operation, '
                     'version or product matched. Confirm it (for example by naming an endpoint) before relying on it.')
 
 
 def _status_for(package):
-    confirmed = any(e.criterion in CONFIRMING and e.outcome == 'match' for e in package.candidate.evidence)
-    return DiscoveryStatus.VALIDATED if confirmed else DiscoveryStatus.UNCONFIRMED
+    return DiscoveryStatus.VALIDATED if is_confirmed(package) else DiscoveryStatus.UNCONFIRMED
 
 
 def _collapse_barriers(findings):

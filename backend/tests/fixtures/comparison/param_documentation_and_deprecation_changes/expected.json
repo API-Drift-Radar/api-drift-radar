@@ -1,0 +1,33 @@
+{
+  "findings": [
+    {
+      "rule_id": "documentation.changed",
+      "method": "GET",
+      "path": "/pets",
+      "category": "documentation_only",
+      "target": "parameter:query:limit|description"
+    },
+    {
+      "rule_id": "documentation.changed",
+      "method": "GET",
+      "path": "/pets",
+      "category": "documentation_only",
+      "target": "parameter:query:limit|example"
+    },
+    {
+      "rule_id": "deprecation.changed",
+      "method": "GET",
+      "path": "/pets",
+      "category": "non_breaking_under_rules",
+      "target": "parameter:query:limit|deprecated"
+    },
+    {
+      "rule_id": "documentation.changed",
+      "method": "GET",
+      "path": "/pets",
+      "category": "documentation_only",
+      "target": "parameter:query:limit|/|description"
+    }
+  ],
+  "limitations": []
+}

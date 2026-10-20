@@ -889,7 +889,8 @@ def record_check(store, source_id, outcome, normalize, compare, usage=None):
         else:
             try:
                 reference = store.read_contract(before.id)
-                changes, limitations = compare(reference, normalized, version)
+                changes, limitations = compare(
+                    reference, normalized, version, snapshot_documents=store.snapshot_documents(before.id))
             except Exception as error:
                 return failed("comparison", error)
             same = reference.normalized == normalized and before.normalization_version == version
@@ -1073,3 +1074,142 @@ it, installed outside the checkout.
   leaves the bundle unused. It is valid, small, and reused if the same contract is captured again.
 - **No paging cursor.** List calls take `limit` but have no offset or cursor yet.
 - **No retention.** Nothing is ever deleted, so history and contract files grow with every changed contract.
+
+
+## Contract comparison (issue #11, increments 1 to 5)
+
+```python
+from radar.comparison.openapi import compare_contracts, result_to_dict
+result = compare_contracts(before_package, after_package)   # two ValidatedContractPackage; pure, no I/O
+```
+
+- **Perspective:** a client that calls the API. Findings are potential risk under Radar's rules, not proof of breakage.
+- **Rules (ruleset `contract-1`):** `operation.removed` is `potentially_breaking`; `operation.added` is
+  `non_breaking_under_rules`; `servers.changed` is `uncertain`. A renamed path is a removal plus an addition. Path
+  parameter names are normalized (`/pets/{id}` equals `/pets/{petId}`).
+- **Parameter rules** (`direction: request`, only for operations present in both contracts; a new or removed operation
+  is reported once, as itself). A parameter is identified by `in` plus name (header names ignore case); a path
+  parameter by its position in the template. Path-level parameters apply to every operation and an operation-level one
+  with the same identity overrides them; `$ref` parameters and schemas are followed offline.
+  `parameter.added` is `potentially_breaking` if required and `non_breaking_under_rules` if optional;
+  `parameter.removed` is `potentially_breaking` (an old client may still send it); `parameter.required_changed` is
+  `potentially_breaking` when it becomes required and `non_breaking_under_rules` when it becomes optional;
+  `parameter.encoding_changed` (`style`, `explode`, `allowReserved`, defaults applied) is `uncertain`, and so is
+  `parameter.schema_changed`, which now only means a parameter switched between `schema` and `content` (or its media
+  types differ) so its schemas cannot be paired. The parameter's schemas themselves use the schema rules below.
+  Descriptions, examples and deprecation are not assessed. A parameter that cannot be read is a limitation
+  (`parameter_unresolved`, `parameter_unreadable`, `parameter_duplicate`) and only that operation is skipped.
+- **Request body rules** (`direction: request`): `request_body.added` (required: `potentially_breaking`; optional:
+  `non_breaking_under_rules`), `request_body.removed` (`potentially_breaking`), `request_body.required_changed`,
+  `request_body.media_added` (`non_breaking_under_rules`), `request_body.media_removed` (`potentially_breaking`). Media
+  types are compared case-insensitively. For a media type present in both, the schemas are compared with the schema rules.
+- **Documentation and deprecation rules** (`direction: none`, in `documentation.py` and the schema walk): a changed,
+  added or removed `summary`, `description`, `title`, `example`/`examples` or `externalDocs` is `documentation.changed`,
+  `documentation_only`, at the operation, path item, parameter, request body, response, media type and each schema; the
+  contract's `info` (title, summary, description, version, termsOfService) is covered too, and the version label alone is
+  said to prove nothing about compatibility. Whitespace and wrapping are not a change; examples compare as data. A
+  `deprecated` flag set or cleared is `deprecation.changed`, `non_breaking_under_rules` (it still works today; it is a
+  signal). `operation.id_changed` is `uncertain`: generated clients may use `operationId` as a method name. A path-level
+  description is reported once, not per operation, and a schema used in several places is reported where it is used.
+  Values are shown truncated to 1000 characters; the location points at the full text. Tags and security requirements
+  are not assessed.
+- **Response rules** (`direction: response`): responses are matched by status (case-insensitive: `2XX` and `200` are
+  different keys; `default` is its own key), then by media type. `response.removed` is `potentially_breaking` for a `2xx`
+  status (the success outcome clients rely on) and `uncertain` for any other; `response.added` is `uncertain`;
+  `response.media_removed` is `potentially_breaking`; `response.media_added` is `uncertain`. Schemas under a status and
+  media type present in both are compared with the schema rules for the response direction. A schema shared by a request
+  and a response is reported once per direction (the scope in the key and `direction` differ). Unreadable responses are a
+  limitation (`response_unresolved`, `schema_unresolved`). Response headers and links are not assessed.
+- **Schema rules** (`schema.*`, in `schemas.py`; used for both directions):
+
+  | change | sent (request) | received (response) |
+  |---|---|---|
+  | type or enum accepts more (`integer` is contained in `number`) | non-breaking | potentially breaking |
+  | type or enum accepts less | potentially breaking | non-breaking |
+  | incompatible type; enum values both added and removed | potentially breaking | potentially breaking |
+  | allows / forbids `null` (3.0 `nullable`, 3.1 type arrays) | non-breaking / potentially breaking | the reverse |
+  | optional property becomes required | potentially breaking | non-breaking |
+  | required property becomes optional | non-breaking | potentially breaking |
+  | property added | potentially breaking if required, else non-breaking | non-breaking (*) |
+  | property removed | potentially breaking | potentially breaking |
+
+  (*) Assumes clients ignore properties they do not know; `uncertain` if the earlier object was closed
+  (`additionalProperties: false`). Read-only properties are ignored in requests and write-only ones in responses
+  (a change to the flag itself is `schema.access_changed`, `uncertain`). Changed constraints (`schema.constraint_changed`:
+  `minimum`, `pattern`, `format`, `default`, ...) and changed unsupported keywords (`schema.unsupported_changed`:
+  `allOf`/`oneOf`/`anyOf`/`not`, `additionalProperties`, extensions, ...) are `uncertain`, and they also downgrade any
+  non-breaking finding under the same schema (and any schema that uses composition) to `uncertain`, with the limitation
+  `schema_construct_not_classified`. `enum` and `required` are sets. References are expanded offline (cycles are cut with
+  a marker) and annotations (`description`, `title`, `example`, `deprecated`, ...) are ignored. A finding's location
+  points into the document that really defines the schema. The `subject` field is a short human label such as
+  `request body (application/json) > owner.name`; the last part of the key is the schema path (`/owner/name`, `/tags/[]`).
+- **Finding:** `key` (deterministic, no timestamps; storage deduplicates on it, and owns persistent record IDs),
+  `rule_id`, `category`, `change_kind`, `direction` (`request`/`response`/`none`; `none` for whole operations), method,
+  path, `before_present`/`after_present` (absence is never a null value), `before_value`/`after_value`, and a
+  `before_location`/`after_location` (`document_url` plus JSON Pointer; a path item reached through `$ref` is located in
+  the document that defines it).
+- **Limitations and coverage:** `coverage.complete` is false while response headers and links, media-type encoding, path-level and operation-level
+  servers, callbacks, security requirements and tags are unassessed, so an empty `findings` list never means "unchanged". Limitations also name unresolved path items,
+  ambiguous path templates, webhooks, and inputs that are `unconfirmed` or a `directory_copy` (the comparator still
+  compares; monitoring decides whether to alert).
+- **Grouped view:** a schema shared by many operations is reported once per operation (right for the operation a person
+  is looking at), so one change can appear dozens of times. `result_to_dict` also returns `finding_groups`: findings
+  with the same rule, category, direction, definition locations and values merged into one entry with `count`,
+  `operation_count` and the first operations. Presentation should use the groups; `findings` stays the full list.
+- **Measured:** `python -m radar.comparison.openapi.evaluation` scores two sets of labeled fixtures and prints, for each,
+  detection precision and recall, classification accuracy, a confusion matrix over the four categories (plus
+  `unexpected` and `missed`), counts of `uncertain` results and of each limitation; `--json` gives the same as a
+  machine-readable report with per-rule figures, and the exit status is 1 on any mismatch. A zero denominator is `null`,
+  never 1.0. `backend/tests/fixtures/comparison/` (157 cases) is the development set, built alongside the rules.
+  `backend/tests/fixtures/comparison_holdout/` (25 realistic or awkward cases) was labeled before the engine was run on
+  it; the first run matched 32 of 33 labeled findings, and the one miss was a label spelling a header key in its display
+  case while keys lowercase header names (the rule and category were right). Both sets have the same author as the
+  rules, so this is a blind check by one person, not independent validation, and the sets are small: they show the
+  rules behave as documented, not real-world accuracy.
+- **Try it on two files:** `python -m radar.comparison.openapi before.yaml after.yaml [--json] [--limit N]` prints the
+  distinct changes, what was and was not compared, and each kind of limitation once with a count. Exit status: 0 no
+  findings, 1 findings, 2 unusable input. Files are single-file contracts; a `$ref` to another file is a limitation.
+- **A real contract pair (manual, needs network, not in CI):** GitHub's `api.github.com` descriptions for API versions
+  2022-11-28 and 2026-03-10 (two 13 MB files) compare in about 1.5 s using about 265 MB. The result was 1631 findings
+  that group into 279 distinct changes (128 potentially breaking, 11 non-breaking under rules, 127 documentation only, 13
+  uncertain), 811 of the findings being the same few dozen removed response properties (such as `has_downloads` and
+  `master_branch`) repeated per operation. Those removals match deprecated GitHub fields, but this was a sanity check by
+  inspection, not a labeled measurement.
+- **With storage (#10):** the storage runner calls `normalize(package) -> (bytes, version)` and
+  `compare(reference, normalized, version) -> (changes, limitations)`. `radar.comparison.openapi.stored` provides both
+  as `normalize_contract` and `compare_stored`.
+  - `normalize_contract(package)` returns canonical JSON (sorted keys, no timestamps) of the root document and every
+    captured referenced document that parses, with the version `openapi-canonical-1`. Documents are keyed by their
+    place relative to the root and no address is kept, so a capture that differs only in file formatting, key order or
+    the URL it was fetched from (a CDN, or the JSON rather than the YAML copy) gives identical bytes, and storage
+    records `unchanged`. (A reference back to the root document by file name is not followed when rebuilt.) A change the comparison does not
+    report (for example reordering a `required` list) still changes the bytes: that check is `changed` with no change
+    records.
+  - `compare_stored(reference, normalized, version, *, snapshot_documents=None, before_source_kind="provider",
+    after_source_kind="provider")` rebuilds both sides from normalized bytes. When the reference was normalized with
+    a version that is no longer supported (after a rule change), it instead rebuilds the reference from its stored
+    original documents and normalizes it with the current rules, so a normalization upgrade never leaves a source stuck
+    on failed checks; that needs `snapshot_documents=store.snapshot_documents(before.id)`. It returns
+    `ChangeInput` records, in the comparison's order, and a list of limitation entries
+    (`{code, scope, explanation, blocks_classification}`) for `complete_check`. Pass a snapshot's
+    `provenance["source_kind"]` as `before_source_kind` to have a directory copy noted as a limitation. It raises
+    `ValueError` if either side was not produced by `normalize_contract` or has an unsupported version, which the
+    runner records as a failed `comparison` stage; the reference is then kept.
+  - Snapshots are always confirmed contracts (an unconfirmed outcome never becomes a snapshot), so rebuilt packages count
+    as confirmed.
+  - **Mapping to `ChangeInput`:** `change_type` is the rule id with `_` for `.` (`operation_removed`,
+    `schema_property_added`); `classification` uses storage's spelling (`non_breaking_under_rules` is
+    `non_breaking`); `direction` is `request`, `response` or `None`; `summary` is the first sentence of the explanation
+    and `rationale` the rest; `location` reads like `GET /pets > response 200 (application/json) > [].name`; `before` and
+    `after` are `ABSENT` when the thing did not exist on that side, and otherwise a JSON value (a null means "no
+    restriction" or "flag not set" for type, enum and read/write-only changes); `details` carries the rule id, the
+    finding key, the ruleset version, the subject, method, path and both locations in the contract documents. The change
+    records are one per finding; use `finding_groups` for a summary.
+  - **Tested together:** `backend/tests/integration/test_comparison_with_storage.py` runs the runner from the storage
+    section against a real `Store`: first capture, a reformatted capture (`unchanged`, still its own snapshot), a
+    changed capture with its classified changes read back after reopening the store, a failed check that leaves the
+    reference alone, a reference the comparison cannot read, and a directory-copy reference.
+  - **Dependency direction:** storage does not depend on comparison; `stored.py` imports storage's `ChangeInput` and
+    vocabulary, as the storage section intends (the runner maps findings to storage's own type).
+- **Examples:** `docs/examples/comparison/mixed-changes.json`, `request-body-property-added.json`,
+  `shared-schema-two-directions.json` and `documentation-and-structure.json`, checked by a test.

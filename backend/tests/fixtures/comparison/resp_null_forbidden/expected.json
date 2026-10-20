@@ -1,0 +1,12 @@
+{
+  "findings": [
+    {
+      "rule_id": "schema.nullability_changed",
+      "method": "GET",
+      "path": "/pets",
+      "category": "non_breaking_under_rules",
+      "target": "response:200:application/json|/n"
+    }
+  ],
+  "limitations": []
+}

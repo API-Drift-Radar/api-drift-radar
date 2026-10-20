@@ -1,0 +1,14 @@
+{
+  "findings": [
+    {
+      "rule_id": "schema.constraint_changed",
+      "method": "POST",
+      "path": "/c",
+      "category": "uncertain",
+      "target": "request-body:application/json|/n|format"
+    }
+  ],
+  "limitations": [
+    "schema_construct_not_classified"
+  ]
+}

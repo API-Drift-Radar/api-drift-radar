@@ -1,0 +1,40 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Acme",
+    "version": "1"
+  },
+  "servers": [
+    {
+      "url": "https://api.acme.com/v1"
+    }
+  ],
+  "paths": {
+    "/c": {
+      "get": {
+        "tags": [
+          "a"
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "k": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Key"
+      }
+    }
+  },
+  "security": [
+    {
+      "k": []
+    }
+  ]
+}

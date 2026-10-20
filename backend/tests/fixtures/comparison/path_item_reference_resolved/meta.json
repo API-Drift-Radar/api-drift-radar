@@ -1,0 +1,13 @@
+{
+  "before": {
+    "referenced": {
+      "https://api.acme.com/paths/pets.json": "before_pets.json"
+    }
+  },
+  "after": {
+    "referenced": {
+      "https://api.acme.com/paths/pets.json": "after_pets.json"
+    }
+  },
+  "rationale": "A path item given as $ref is read from the captured referenced document."
+}

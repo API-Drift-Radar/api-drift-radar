@@ -1,0 +1,12 @@
+{
+  "findings": [
+    {
+      "rule_id": "schema.type_changed",
+      "method": "GET",
+      "path": "/pets",
+      "category": "potentially_breaking",
+      "target": "response:200:application/json|/age"
+    }
+  ],
+  "limitations": []
+}

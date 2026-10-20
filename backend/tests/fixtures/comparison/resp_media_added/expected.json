@@ -1,0 +1,12 @@
+{
+  "findings": [
+    {
+      "rule_id": "response.media_added",
+      "method": "GET",
+      "path": "/pets",
+      "category": "uncertain",
+      "target": "response:200:application/xml"
+    }
+  ],
+  "limitations": []
+}

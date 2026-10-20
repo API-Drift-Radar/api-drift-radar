@@ -1,0 +1,12 @@
+{
+  "findings": [
+    {
+      "rule_id": "schema.property_added",
+      "method": "POST",
+      "path": "/pets",
+      "category": "potentially_breaking",
+      "target": "request-body:application/json|/ownerId"
+    }
+  ],
+  "limitations": []
+}

@@ -1,0 +1,12 @@
+{
+  "findings": [
+    {
+      "rule_id": "schema.constraint_changed",
+      "method": "GET",
+      "path": "/pets",
+      "category": "uncertain",
+      "target": "parameter:query:limit|/|maximum"
+    }
+  ],
+  "limitations": []
+}

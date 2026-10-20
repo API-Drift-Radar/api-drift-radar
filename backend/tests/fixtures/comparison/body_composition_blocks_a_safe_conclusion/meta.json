@@ -1,0 +1,3 @@
+{
+  "rationale": "A new optional property next to allOf is not confidently safe."
+}

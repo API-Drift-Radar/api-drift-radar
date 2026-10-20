@@ -1,0 +1,28 @@
+{
+  "findings": [
+    {
+      "rule_id": "operation.removed",
+      "method": "DELETE",
+      "path": "/pets/{id}",
+      "category": "potentially_breaking"
+    },
+    {
+      "rule_id": "operation.added",
+      "method": "GET",
+      "path": "/owners",
+      "category": "non_breaking_under_rules"
+    },
+    {
+      "rule_id": "servers.changed",
+      "category": "uncertain"
+    },
+    {
+      "rule_id": "documentation.changed",
+      "method": "GET",
+      "path": "/pets",
+      "category": "documentation_only",
+      "target": "operation|summary"
+    }
+  ],
+  "limitations": []
+}

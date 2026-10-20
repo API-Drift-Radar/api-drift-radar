@@ -1,0 +1,11 @@
+{
+  "findings": [
+    {
+      "rule_id": "operation.removed",
+      "method": "POST",
+      "path": "/pets",
+      "category": "potentially_breaking"
+    }
+  ],
+  "limitations": []
+}

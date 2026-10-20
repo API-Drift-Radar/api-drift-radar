@@ -1,0 +1,12 @@
+{
+  "findings": [
+    {
+      "rule_id": "documentation.changed",
+      "method": "POST",
+      "path": "/pets",
+      "category": "documentation_only",
+      "target": "request-body|description"
+    }
+  ],
+  "limitations": []
+}

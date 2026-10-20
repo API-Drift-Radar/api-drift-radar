@@ -1,0 +1,50 @@
+{
+  "paths": {
+    "/pets/{id}": {
+      "delete": {
+        "summary": "Delete a pet",
+        "responses": {
+          "204": {
+            "description": "gone"
+          }
+        }
+      },
+      "get": {
+        "summary": "Get a pet",
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      }
+    },
+    "/pets": {
+      "post": {
+        "summary": "Create a pet",
+        "responses": {
+          "201": {
+            "description": "created"
+          }
+        }
+      },
+      "get": {
+        "summary": "List pets",
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.acme.com/v1"
+    }
+  ],
+  "info": {
+    "title": "Acme Pets",
+    "version": "1.0.0"
+  },
+  "openapi": "3.0.3"
+}

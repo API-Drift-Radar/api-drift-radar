@@ -1,0 +1,14 @@
+{
+  "findings": [
+    {
+      "rule_id": "schema.property_added",
+      "method": "GET",
+      "path": "/pets",
+      "category": "uncertain",
+      "target": "response:200:application/json|/nick"
+    }
+  ],
+  "limitations": [
+    "schema_construct_not_classified"
+  ]
+}

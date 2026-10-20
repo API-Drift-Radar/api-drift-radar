@@ -1,0 +1,19 @@
+{
+  "findings": [
+    {
+      "rule_id": "response.removed",
+      "method": "GET",
+      "path": "/pets",
+      "category": "potentially_breaking",
+      "target": "response:2XX"
+    },
+    {
+      "rule_id": "response.added",
+      "method": "GET",
+      "path": "/pets",
+      "category": "uncertain",
+      "target": "response:200"
+    }
+  ],
+  "limitations": []
+}

@@ -1,0 +1,3 @@
+{
+  "rationale": "A schema property that happens to be called description is a property, not documentation."
+}

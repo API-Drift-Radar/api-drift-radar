@@ -1,0 +1,21 @@
+{
+  "findings": [
+    {
+      "rule_id": "schema.constraint_changed",
+      "method": "POST",
+      "path": "/pets",
+      "category": "uncertain",
+      "target": "request-body:application/json|/profile|minProperties"
+    },
+    {
+      "rule_id": "schema.property_added",
+      "method": "POST",
+      "path": "/pets",
+      "category": "uncertain",
+      "target": "request-body:application/json|/profile/nick"
+    }
+  ],
+  "limitations": [
+    "schema_construct_not_classified"
+  ]
+}

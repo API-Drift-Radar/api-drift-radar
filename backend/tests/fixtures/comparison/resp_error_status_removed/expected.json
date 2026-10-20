@@ -1,0 +1,12 @@
+{
+  "findings": [
+    {
+      "rule_id": "response.removed",
+      "method": "GET",
+      "path": "/pets",
+      "category": "uncertain",
+      "target": "response:404"
+    }
+  ],
+  "limitations": []
+}
