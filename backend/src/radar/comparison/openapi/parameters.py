@@ -22,6 +22,7 @@ Descriptions, examples and deprecation are documentation and are not assessed he
 
 from dataclasses import dataclass
 import re
+from typing import Any
 
 from radar.comparison.openapi.operations import Operation, normalize_path
 from radar.comparison.openapi.references import Documents, Unresolved
