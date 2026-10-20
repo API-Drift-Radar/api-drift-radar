@@ -23,7 +23,7 @@ DATA_KEYS = frozenset({"enum", "default", "const", "example", "examples"})
 # Keys whose values are maps from a user-chosen name to a schema.
 NAME_MAPS = frozenset({"properties", "patternProperties", "$defs", "definitions", "dependentSchemas"})
 # Documentation annotations: a change to one is documentation, not a change to what a schema accepts.
-ANNOTATIONS = frozenset({"title", "description", "example", "examples", "externalDocs"})
+ANNOTATIONS = frozenset({"title", "description", "example", "examples", "externalDocs", "deprecated"})
 
 
 class Unresolved(Exception):

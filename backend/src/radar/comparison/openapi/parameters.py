@@ -10,8 +10,10 @@ Rules (all `direction: request`), from the point of view of a client written aga
 - `parameter.added`            required: potentially breaking (old clients do not send it); optional: non-breaking.
 - `parameter.removed`          potentially breaking: an old client may still send it (conservative).
 - `parameter.required_changed` optional to required: potentially breaking; required to optional: non-breaking.
-- `parameter.schema_changed`   uncertain: the parameter's schema (or `content`) differs. Classifying the difference
-                               needs the schema rules, which are a later increment.
+- `parameter.schema_changed`   uncertain: the parameter switched between `schema` and `content`, or its `content` media
+                               types differ, so the schemas cannot be paired.
+- `schema.*`                   the parameter's schema (or each `content` schema) compared with the request-direction
+                               schema rules in `schemas.py`.
 - `parameter.encoding_changed` uncertain: `style`, `explode` or `allowReserved` differ, which changes how a value is
                                written on the wire.
 
@@ -19,12 +21,11 @@ Descriptions, examples and deprecation are documentation and are not assessed he
 """
 
 from dataclasses import dataclass
-import json
 import re
-from typing import Any
 
 from radar.comparison.openapi.operations import Operation, normalize_path
 from radar.comparison.openapi.references import Documents, Unresolved
+from radar.comparison.openapi.schemas import SchemaRef, schema_findings
 from radar.discovery.references import json_pointer
 from radar.domain.comparison import (
     ADDED, CHANGED, NON_BREAKING, POTENTIALLY_BREAKING, REMOVED, REQUEST, UNCERTAIN, ComparisonLimitation,
@@ -34,7 +35,6 @@ from radar.domain.comparison import (
 LOCATIONS = ("path", "query", "header", "cookie")
 _PLACEHOLDER = re.compile(r"\{([^{}]*)\}")
 _DEFAULT_STYLE = {"path": "simple", "header": "simple", "query": "form", "cookie": "form"}
-_UNKNOWN = object()  # a schema that could not be read: not comparable, never equal
 
 
 @dataclass(frozen=True)
@@ -43,7 +43,8 @@ class Parameter:
     name: str
     location_in: str
     required: bool
-    shape: Any  # expanded schema or content, or _UNKNOWN
+    schema: SchemaRef | None  # the `schema`, as written
+    content: dict | None  # media type -> SchemaRef, when the parameter uses `content` instead of `schema`
     encoding: tuple  # (style, explode, allowReserved) with the specification defaults applied
     where: SourceLocation
 
@@ -69,14 +70,15 @@ def _encoding(node: dict, location_in: str):
     return style, explode, bool(node.get("allowReserved", False))
 
 
-def _shape(docs: Documents, node: dict, url: str):
-    key = "schema" if "schema" in node else "content" if "content" in node else None
-    if key is None:
-        return None
-    try:
-        return {key: docs.expand(node[key], url)}
-    except Unresolved:
-        return _UNKNOWN
+def _schemas(docs: Documents, node: dict, url: str, tokens: tuple):
+    """(schema, content) of a parameter node, each as written. A malformed `content` is treated as unreadable."""
+    schema = SchemaRef(docs, node["schema"], url, (*tokens, "schema")) if "schema" in node else None
+    content = None
+    if isinstance(node.get("content"), dict):
+        content = {str(name).lower().replace(" ", ""): SchemaRef(docs, (value or {}).get("schema", {}), url,
+                                                                  (*tokens, "content", name, "schema"))
+                   for name, value in node["content"].items() if isinstance(value, dict)}
+    return schema, content
 
 
 def _read(docs: Documents, entry: Any, url: str, tokens: tuple, declared_path: str) -> Parameter:
@@ -90,7 +92,8 @@ def _read(docs: Documents, entry: Any, url: str, tokens: tuple, declared_path: s
     return Parameter(
         _identity(location_in, name, declared_path), name, location_in,
         True if location_in == "path" else bool(node.get("required", False)),  # path parameters are always required
-        _shape(docs, node, node_url), _encoding(node, location_in), SourceLocation(node_url, json_pointer(node_tokens)))
+        *_schemas(docs, node, node_url, node_tokens), _encoding(node, location_in),
+        SourceLocation(node_url, json_pointer(node_tokens)))
 
 
 def effective_parameters(operation: Operation) -> dict[tuple, Parameter]:
@@ -134,10 +137,15 @@ def _finding(rule, category, kind, operation, before, after, explanation, before
         explanation=explanation)
 
 
-def _same_shape(before: Parameter, after: Parameter):
-    if before.shape is _UNKNOWN or after.shape is _UNKNOWN:
-        return None
-    return json.dumps(before.shape, sort_keys=True) == json.dumps(after.shape, sort_keys=True)
+def _schema_pairs(old: Parameter, new: Parameter):
+    """((media or None), before SchemaRef, after SchemaRef) pairs, or None if the two cannot be paired."""
+    if old.schema is not None and new.schema is not None:
+        return [(None, old.schema, new.schema)]
+    if old.content is not None and new.content is not None and old.content.keys() == new.content.keys():
+        return [(name, old.content[name], new.content[name]) for name in sorted(old.content)]
+    if old.schema is None and new.schema is None and old.content is None and new.content is None:
+        return []
+    return None
 
 
 def compare_parameters(before_op: Operation, after_op: Operation, limitations: list) -> list[ContractFinding]:
@@ -171,16 +179,17 @@ def compare_parameters(before_op: Operation, after_op: Operation, limitations: l
                     "parameter.required_changed", category, CHANGED, after_op, old, new,
                     f"The {where} changed from {'required' if old.required else 'optional'} to "
                     f"{'required' if new.required else 'optional'}. {effect}"))
-            same = _same_shape(old, new)
-            if same is None:
-                limitations.append(ComparisonLimitation(
-                    "parameter_schema_unresolved", f"The schema of the {where} could not be read in full, so it was "
-                    "not compared.", label, True))
-            elif not same:
+            pairs = _schema_pairs(old, new)
+            if pairs is None:
                 findings.append(_finding(
                     "parameter.schema_changed", UNCERTAIN, CHANGED, after_op, old, new,
-                    f"The schema of the {where} differs. Whether that affects clients is not classified yet.",
-                    old.shape, new.shape))
+                    f"The {where} switched between `schema` and `content`, or its media types differ, so its "
+                    "schemas cannot be compared. Whether that affects clients is not classified."))
+            for media, old_schema, new_schema in pairs or []:
+                scope = f"parameter:{identity[0]}:{identity[1]}" + (f":{media}" if media else "")
+                findings.extend(schema_findings(
+                    after_op.method, after_op.declared_path, normalize_path(after_op.declared_path), scope,
+                    f"{where}" + (f" ({media})" if media else ""), old_schema, new_schema, REQUEST, limitations))
             if old.encoding != new.encoding:
                 findings.append(_finding(
                     "parameter.encoding_changed", UNCERTAIN, CHANGED, after_op, old, new,
