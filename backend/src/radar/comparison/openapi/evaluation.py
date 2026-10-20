@@ -5,9 +5,9 @@
 A case is a directory under `backend/tests/fixtures/comparison/` holding `before.json`, `after.json`, `expected.json`
 and optionally `meta.json`. Labels are written from the rule specification (the module docstring of `compare`), not
 generated from the comparator's output. `expected.json` lists the findings (`rule_id`, `method`, `path` as the
-normalized identity, `parameter` for parameter rules, and `category`) and the limitation codes that must appear.
+normalized identity, `target` for parameter, request-body and schema rules, and `category`) and the limitation codes that must appear.
 
-Detection: a finding is found when its (rule, method, normalized path, parameter) identity is present; precision and recall are
+Detection: a finding is found when its (rule, method, normalized path, target) identity is present; precision and recall are
 computed over those identities. Classification: of the findings that were detected, the share with the expected
 category. A zero denominator is reported as None, never as 1.0.
 """
@@ -47,7 +47,7 @@ class Case:
     name: str
     before: ValidatedContractPackage
     after: ValidatedContractPackage
-    expected_findings: dict  # (rule_id, METHOD or "", normalized path or "", parameter or "") -> category
+    expected_findings: dict  # (rule_id, METHOD or "", normalized path or "", target or "") -> category
     expected_limitations: frozenset
     rationale: str
 
@@ -66,7 +66,7 @@ def load_cases(root: Path = FIXTURES) -> list[Case]:
         meta_file = directory / "meta.json"
         meta = json.loads(meta_file.read_text()) if meta_file.exists() else {}
         expected = json.loads((directory / "expected.json").read_text())
-        findings = {(f["rule_id"], f.get("method", ""), normalize_path(f.get("path", "")), f.get("parameter", "")):
+        findings = {(f["rule_id"], f.get("method", ""), normalize_path(f.get("path", "")), f.get("target", f.get("parameter", ""))):
                     f["category"] for f in expected["findings"]}
         cases.append(Case(directory.name, _side(directory, "before", meta), _side(directory, "after", meta), findings,
                           frozenset(expected.get("limitations", [])), meta.get("rationale", "")))
@@ -74,9 +74,14 @@ def load_cases(root: Path = FIXTURES) -> list[Case]:
 
 
 def identity(finding) -> tuple:
-    """(rule, method, normalized path, parameter). A parameter is `in:name`, or `path:N` for the Nth path placeholder."""
-    parameter = finding.key.split("|")[3] if finding.rule_id.startswith("parameter.") else ""
-    return finding.rule_id, finding.method or "", normalize_path(finding.path or ""), parameter
+    """(rule, method, normalized path, target): what the finding is about, taken from the rest of its key.
+
+    A parameter is `in:name` (`path:N` for the Nth path placeholder). A schema change is `scope|schema path[|keyword]`,
+    such as `request-body:application/json|/owner/age`.
+    """
+    prefixed = finding.rule_id.startswith(("parameter.", "request_body.", "schema."))
+    target = finding.key.split("|", 3)[3] if prefixed else ""
+    return finding.rule_id, finding.method or "", normalize_path(finding.path or ""), target
 
 
 @dataclass

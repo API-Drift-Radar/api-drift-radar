@@ -1,0 +1,12 @@
+{
+  "findings": [
+    {
+      "rule_id": "schema.type_changed",
+      "method": "GET",
+      "path": "/pets",
+      "category": "non_breaking_under_rules",
+      "target": "parameter:query:limit|/"
+    }
+  ],
+  "limitations": []
+}

@@ -1,3 +1,3 @@
 {
-  "rationale": "A literal schema change is reported as uncertain until the schema rules exist."
+  "rationale": "A literal schema change is classified with the request-direction schema rules."
 }

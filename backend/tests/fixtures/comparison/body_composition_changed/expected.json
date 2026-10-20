@@ -1,0 +1,14 @@
+{
+  "findings": [
+    {
+      "rule_id": "schema.unsupported_changed",
+      "method": "POST",
+      "path": "/pets",
+      "category": "uncertain",
+      "target": "request-body:application/json|/|oneOf"
+    }
+  ],
+  "limitations": [
+    "schema_construct_not_classified"
+  ]
+}

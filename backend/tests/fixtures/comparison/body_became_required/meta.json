@@ -1,0 +1,3 @@
+{
+  "rationale": "Clients that omit the body may now be rejected."
+}

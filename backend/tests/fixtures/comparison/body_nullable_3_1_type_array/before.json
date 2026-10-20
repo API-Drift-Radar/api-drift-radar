@@ -1,0 +1,37 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Acme Pets",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.acme.com/v1"
+    }
+  ],
+  "paths": {
+    "/pets": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "n": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "ok"
+          }
+        }
+      }
+    }
+  }
+}

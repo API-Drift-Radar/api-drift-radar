@@ -80,7 +80,7 @@ def test_an_unreadable_schema_is_a_limitation_and_the_other_checks_still_run():
                                           'schema': {'$ref': 'missing.json#/S'}}])
     result = compare(CONTRACT, after)
     assert [f.rule_id for f in result.findings] == ['parameter.required_changed']
-    assert any(l.code == 'parameter_schema_unresolved' for l in result.limitations)
+    assert any(l.code == 'schema_unresolved' for l in result.limitations)
 
 
 def test_a_schema_that_is_too_large_to_expand_is_reported_not_crashed():
@@ -89,19 +89,21 @@ def test_a_schema_that_is_too_large_to_expand_is_reported_not_crashed():
         deep = {'type': 'array', 'items': deep}
     after = edited('/pets', parameters=[{'name': 'limit', 'in': 'query', 'schema': deep}])
     result = compare(CONTRACT, after)
-    assert result.findings == () and any(l.code == 'parameter_schema_unresolved' for l in result.limitations)
+    assert result.findings == () and any(l.code == 'schema_unresolved' for l in result.limitations)
 
 
 def test_boolean_and_number_enum_members_are_not_confused():
     before = edited('/pets', parameters=[{'name': 'f', 'in': 'query', 'schema': {'enum': [1, 2]}}])
     after = edited('/pets', parameters=[{'name': 'f', 'in': 'query', 'schema': {'enum': [True, 2]}}])
-    assert [f.rule_id for f in compare(before, after).findings] == ['parameter.schema_changed']
+    assert [f.rule_id for f in compare(before, after).findings] == ['schema.enum_changed']
 
 
 def test_content_instead_of_schema_is_compared_too():
     before = edited('/pets', parameters=[{'name': 'f', 'in': 'query', 'content': {'application/json': {'schema': {'type': 'string'}}}}])
     after = edited('/pets', parameters=[{'name': 'f', 'in': 'query', 'content': {'application/json': {'schema': {'type': 'object'}}}}])
-    assert [f.rule_id for f in compare(before, after).findings] == ['parameter.schema_changed']
+    (finding,) = compare(before, after).findings
+    assert (finding.rule_id, finding.category) == ('schema.type_changed', 'potentially_breaking')
+    assert finding.key == 'schema.type_changed|GET|/pets|parameter:query:f:application/json|/'
 
 
 def test_parameter_results_are_deterministic_and_serializable():
@@ -112,10 +114,10 @@ def test_parameter_results_are_deterministic_and_serializable():
     json.dumps(result_to_dict(first))
 
 
-def test_coverage_now_includes_parameters_but_not_bodies_or_responses():
+def test_coverage_includes_parameters_and_request_bodies_but_not_responses():
     coverage = compare(CONTRACT, copy.deepcopy(CONTRACT)).coverage
-    assert 'parameters' in coverage.assessed and coverage.complete is False
-    assert {'request bodies', 'response schemas'} <= set(coverage.not_assessed)
+    assert {'parameters', 'request bodies'} <= set(coverage.assessed) and coverage.complete is False
+    assert 'response schemas' in coverage.not_assessed
 
 
 # --- reference expansion ---------------------------------------------------------------------------

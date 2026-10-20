@@ -1,0 +1,12 @@
+{
+  "findings": [
+    {
+      "rule_id": "request_body.media_removed",
+      "method": "POST",
+      "path": "/pets",
+      "category": "potentially_breaking",
+      "target": "request-body:application/xml"
+    }
+  ],
+  "limitations": []
+}
