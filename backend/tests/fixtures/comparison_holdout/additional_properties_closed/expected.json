@@ -1,0 +1,14 @@
+{
+  "findings": [
+    {
+      "rule_id": "schema.unsupported_changed",
+      "method": "POST",
+      "path": "/c",
+      "category": "uncertain",
+      "target": "request-body:application/json|/|additionalProperties"
+    }
+  ],
+  "limitations": [
+    "schema_construct_not_classified"
+  ]
+}

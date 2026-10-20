@@ -1,0 +1,19 @@
+{
+  "findings": [
+    {
+      "rule_id": "schema.type_changed",
+      "method": "POST",
+      "path": "/c",
+      "category": "non_breaking_under_rules",
+      "target": "request-body:application/json|/qty"
+    },
+    {
+      "rule_id": "schema.type_changed",
+      "method": "POST",
+      "path": "/c",
+      "category": "potentially_breaking",
+      "target": "response:201:application/json|/qty"
+    }
+  ],
+  "limitations": []
+}

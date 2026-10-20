@@ -1,0 +1,31 @@
+{
+  "findings": [
+    {
+      "rule_id": "documentation.changed",
+      "method": "GET",
+      "path": "/c",
+      "category": "documentation_only",
+      "target": "operation|summary"
+    },
+    {
+      "rule_id": "documentation.changed",
+      "method": "GET",
+      "path": "/c",
+      "category": "documentation_only",
+      "target": "operation|description"
+    },
+    {
+      "rule_id": "documentation.changed",
+      "method": "GET",
+      "path": "/c",
+      "category": "documentation_only",
+      "target": "response:200:application/json|/a|description"
+    },
+    {
+      "rule_id": "documentation.changed",
+      "category": "documentation_only",
+      "target": "info|version"
+    }
+  ],
+  "limitations": []
+}

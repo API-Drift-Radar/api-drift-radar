@@ -1,0 +1,21 @@
+{
+  "findings": [
+    {
+      "rule_id": "schema.unsupported_changed",
+      "method": "GET",
+      "path": "/c",
+      "category": "uncertain",
+      "target": "response:200:application/json|/v|oneOf"
+    },
+    {
+      "rule_id": "schema.type_changed",
+      "method": "GET",
+      "path": "/c",
+      "category": "potentially_breaking",
+      "target": "response:200:application/json|/v"
+    }
+  ],
+  "limitations": [
+    "schema_construct_not_classified"
+  ]
+}

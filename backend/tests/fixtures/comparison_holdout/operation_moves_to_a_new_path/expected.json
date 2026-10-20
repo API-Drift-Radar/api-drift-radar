@@ -1,0 +1,17 @@
+{
+  "findings": [
+    {
+      "rule_id": "operation.removed",
+      "method": "GET",
+      "path": "/pets",
+      "category": "potentially_breaking"
+    },
+    {
+      "rule_id": "operation.added",
+      "method": "GET",
+      "path": "/animals",
+      "category": "non_breaking_under_rules"
+    }
+  ],
+  "limitations": []
+}

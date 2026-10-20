@@ -1,0 +1,57 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Acme",
+    "version": "1"
+  },
+  "servers": [
+    {
+      "url": "https://api.acme.com/v1"
+    }
+  ],
+  "paths": {
+    "/c": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "qty": {
+                    "$ref": "#/components/schemas/Qty"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "qty": {
+                      "$ref": "#/components/schemas/Qty"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Qty": {
+        "type": "integer"
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "findings": [
+    {
+      "rule_id": "parameter.added",
+      "method": "GET",
+      "path": "/c",
+      "category": "potentially_breaking",
+      "target": "query:q"
+    }
+  ],
+  "limitations": [
+    "parameter_unresolved",
+    "response_unresolved",
+    "request_body_unresolved"
+  ]
+}

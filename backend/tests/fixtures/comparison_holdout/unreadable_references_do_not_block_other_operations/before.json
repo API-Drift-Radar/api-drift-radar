@@ -1,0 +1,49 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Acme",
+    "version": "1"
+  },
+  "servers": [
+    {
+      "url": "https://api.acme.com/v1"
+    }
+  ],
+  "paths": {
+    "/a": {
+      "get": {
+        "parameters": [
+          {
+            "$ref": "p.json#/L"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "r.json#/R"
+          }
+        }
+      }
+    },
+    "/b": {
+      "post": {
+        "requestBody": {
+          "$ref": "b.json#/B"
+        },
+        "responses": {
+          "201": {
+            "description": "ok"
+          }
+        }
+      }
+    },
+    "/c": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      }
+    }
+  }
+}

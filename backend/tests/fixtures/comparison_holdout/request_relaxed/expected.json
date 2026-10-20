@@ -1,0 +1,19 @@
+{
+  "findings": [
+    {
+      "rule_id": "parameter.required_changed",
+      "method": "GET",
+      "path": "/c",
+      "category": "non_breaking_under_rules",
+      "target": "query:kind"
+    },
+    {
+      "rule_id": "schema.enum_changed",
+      "method": "GET",
+      "path": "/c",
+      "category": "non_breaking_under_rules",
+      "target": "parameter:query:kind|/"
+    }
+  ],
+  "limitations": []
+}

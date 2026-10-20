@@ -1,0 +1,3 @@
+{
+  "rationale": "A realistic release: a required parameter, a new optional one, a new response field, a removed error response, a new required request field, a deprecation, a reworded summary and a new server."
+}

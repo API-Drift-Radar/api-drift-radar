@@ -1,0 +1,12 @@
+{
+  "findings": [
+    {
+      "rule_id": "schema.enum_changed",
+      "method": "POST",
+      "path": "/c",
+      "category": "potentially_breaking",
+      "target": "request-body:application/json|/kind"
+    }
+  ],
+  "limitations": []
+}

@@ -1,0 +1,14 @@
+{
+  "findings": [
+    {
+      "rule_id": "schema.constraint_changed",
+      "method": "GET",
+      "path": "/c",
+      "category": "uncertain",
+      "target": "parameter:query:n|/|default"
+    }
+  ],
+  "limitations": [
+    "schema_construct_not_classified"
+  ]
+}

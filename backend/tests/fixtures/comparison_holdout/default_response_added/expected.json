@@ -1,0 +1,12 @@
+{
+  "findings": [
+    {
+      "rule_id": "response.added",
+      "method": "GET",
+      "path": "/c",
+      "category": "uncertain",
+      "target": "response:DEFAULT"
+    }
+  ],
+  "limitations": []
+}
