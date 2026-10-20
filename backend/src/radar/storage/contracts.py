@@ -418,18 +418,23 @@ def _create_directory(directory):
     """Create ``directory`` and any missing parents, durably.
 
     A new directory only survives a power failure once the directory that
-    contains it is synced, so each newly created one is synced in its parent.
+    contains it is synced. ``directory`` is synced in its parent every time,
+    even if it already exists: an earlier attempt may have created it and
+    then failed (or crashed) before syncing it, and a retry must not skip
+    that step. Missing parents created here are synced in theirs.
     """
+    directory = os.path.abspath(directory)
     missing = []
-    current = os.path.abspath(directory)
+    current = directory
     while not os.path.isdir(current):
         missing.append(current)
         parent = os.path.dirname(current)
         if parent == current:
             break
         current = parent
-    if not missing:
-        return
-    os.makedirs(directory, mode=0o700, exist_ok=True)
-    for path in missing:
-        _sync_directory(os.path.dirname(path))
+    if missing:
+        os.makedirs(directory, mode=0o700, exist_ok=True)
+    containers = {os.path.dirname(path) for path in missing}
+    containers.add(os.path.dirname(directory))
+    for container in sorted(containers, key=len, reverse=True):  # deepest first
+        _sync_directory(container)

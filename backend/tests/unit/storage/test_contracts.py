@@ -488,10 +488,42 @@ class DirectorySyncTests(ContractFilesTestCase):
         self.assertIn(os.path.abspath(self.dir.parent), synced)  # holds new-data/
         self.assertIn(os.path.abspath(data), synced)             # holds contracts/
 
-    def test_an_existing_directory_is_not_synced_in_its_parent_again(self):
+    def test_the_directory_is_synced_in_its_parent_on_every_new_bundle(self):
         self.put()
         synced = self.record_syncs()
         self.put(normalized=b"{}")
+        self.assertIn(os.path.abspath(self.dir.parent), synced)
+
+    def test_a_retry_completes_a_parent_sync_that_failed_after_creation(self):
+        """Regression (PR #18 review): creation, then parent-sync failure, then retry."""
+        self.dir.parent.mkdir(parents=True, exist_ok=True)
+        parent = os.stat(self.dir.parent)
+        with patch.object(
+            contracts.os, "fsync",
+            failing_directory_sync(errno.EIO, only=(parent.st_dev, parent.st_ino)),
+        ):
+            with self.assertRaisesRegex(StoreError, "Could not create"):
+                self.put()
+        self.assertTrue(self.dir.is_dir())  # created, but its entry was never synced
+        self.assertEqual(self.entries(), [])
+
+        synced = self.record_syncs()
+        fingerprint = self.put()  # the retry: the directory already exists
+        self.assertIn(os.path.abspath(self.dir.parent), synced)
+        # The parent is synced before anything is written into the directory.
+        self.assertEqual(synced[0], os.path.abspath(self.dir.parent))
+        self.assertEqual(self.files.read(fingerprint).original, ROOT)
+
+    def test_a_retry_after_a_restart_also_completes_the_parent_sync(self):
+        self.dir.mkdir(parents=True)  # left behind by a process that crashed before syncing
+        synced = self.record_syncs()
+        ContractFiles(self.dir).put("openapi.yaml", {"openapi.yaml": ROOT}, NORMALIZED, VERSION)
+        self.assertIn(os.path.abspath(self.dir.parent), synced)
+
+    def test_a_reused_bundle_does_not_resync_the_parent(self):
+        self.put()
+        synced = self.record_syncs()
+        self.put()
         self.assertNotIn(os.path.abspath(self.dir.parent), synced)
 
     def test_a_reused_bundle_is_synced_before_it_is_returned(self):
