@@ -5,6 +5,7 @@
 - `radar.comparison`: `extract_structure`, `compare_structures`, `compare_extracted`, and existing structural types.
 - `radar.storage.baseline`: `baseline_path`, `save_baseline`, `load_baseline`.
 - `radar.storage.atomic_write`: `write_file_atomically`.
+- `radar.storage.repository`: `Store`, the storage interface for contract snapshots and check history (see [Storage](#storage-contract-snapshots-and-check-history-issue-10)).
 - `radar.cli.fetch`: `fetch_json`.
 - `radar.cli.main`: `main(argv=None)` returns exit code 0 (no differences), 1 (differences), or 2 (failure).
 
@@ -815,3 +816,260 @@ treat the numbers as a regression baseline, not a general estimate.
   (`radar.discovery.suffix`, from the `publicsuffixlist` package), so `co.uk` or `github.io` never relate hosts.
 - **Direct specification URLs.** If a target that names a specification file fails to load, guessed framework paths are
   not probed on its host (other locations are still searched, since the path may be an API endpoint).
+
+## Storage: contract snapshots and check history (issue #10)
+
+`radar.storage.repository.Store` is the storage component's whole interface. Other components use it and
+nothing else in `radar.storage` (the older `baseline` and `atomic_write` modules serve the CLI only).
+Storage does not discover, normalize, compare or schedule anything: the runner passes it finished results,
+and it keeps them permanently.
+
+### Where data lives
+
+| Path | Contents |
+|---|---|
+| `.radar/radar.db` | SQLite database: sources, checks, snapshots, document origins, changes |
+| `.radar/contracts/<fingerprint>/` | One immutable contract bundle: `manifest.json`, `original/` (every captured document, byte for byte) and `normalized` |
+
+The data folder is `RADAR_DATA_DIR` (default `.radar`, **relative to the current directory**). The API and the
+runner must open the same folder, so set an absolute path when they start from different directories. The
+schema is created and upgraded automatically when a `Store` opens; migrations ship inside the package
+(`radar/storage/migrations/`).
+
+### Recording a check (the runner)
+
+Every check is `begin_check`, then exactly one of `complete_check` or `fail_check`. The example below covers
+every discovery result; `normalize` is #11's normalization function and `compare` its comparison, mapped to
+`ChangeInput` (both are passed in here only so the example stands alone).
+
+```python
+from radar.discovery.evaluation import package_fingerprint
+from radar.discovery.serialization import outcome_to_dict
+from radar.domain.discovery import DiscoveryStatus
+from radar.storage.errors import ConflictError, StoreError
+from radar.storage.records import AMBIGUOUS, CHANGED, FAILED, INITIAL, UNCHANGED, UNCONFIRMED
+from radar.storage.repository import Store
+
+MAX_ATTEMPTS = 3  # how often to re-compare if another check moved the reference meanwhile
+
+
+def record_check(store, source_id, outcome, normalize, compare, usage=None):
+    """Store one check of a source, given discovery's outcome. Returns the finished CheckRun."""
+    check = store.begin_check(source_id)
+    detail = {"llm_usage": usage} if usage else {}
+
+    if outcome.status in (DiscoveryStatus.AMBIGUOUS, DiscoveryStatus.UNCONFIRMED):
+        # No snapshot and no change to the reference; candidates are kept for a person to choose.
+        kind = AMBIGUOUS if outcome.status is DiscoveryStatus.AMBIGUOUS else UNCONFIRMED
+        return store.fail_check(
+            check.id, outcome=kind, stage="discovery", reason=outcome.status.value,
+            error="Discovery could not settle on one contract for this API.",
+            detail={**detail, "discovery": outcome_to_dict(outcome)},
+        )
+    if outcome.status is not DiscoveryStatus.VALIDATED:
+        return store.fail_check(
+            check.id, stage="discovery", reason=outcome.status.value,
+            error=f"Discovery ended with {outcome.status.value}.", detail=detail,
+        )
+
+    def failed(stage, error):
+        # Close the check on any error, so it never stays 'running' until a restart.
+        return store.fail_check(check.id, stage=stage, reason=f"{stage}_failed",
+                                error=str(error) or type(error).__name__, detail=detail)
+
+    package = outcome.package
+    try:
+        normalized, version = normalize(package)  # bytes and a version string, from #11
+    except Exception as error:
+        return failed("normalization", error)
+    for _ in range(MAX_ATTEMPTS):
+        before = store.latest_snapshot(source_id)
+        if before is None:
+            result, changes, limitations = INITIAL, [], []
+        else:
+            try:
+                reference = store.read_contract(before.id)
+                changes, limitations = compare(reference, normalized, version)
+            except Exception as error:
+                return failed("comparison", error)
+            same = reference.normalized == normalized and before.normalization_version == version
+            result = UNCHANGED if same else CHANGED
+        try:
+            return store.complete_check(
+                check.id, outcome=result, package=package,
+                normalized=normalized, normalization_version=version,
+                before_snapshot_id=before.id if before else None,
+                changes=changes, limitations=limitations,
+                content_fingerprint=package_fingerprint(package), detail=detail,
+            )
+        except ConflictError:
+            if store.get_check(check.id).finished:
+                raise  # finished elsewhere: nothing more to do
+            # Another check moved the reference: compare again against the new one.
+        except StoreError as error:
+            return failed("storage", error)  # e.g. the disk is full; nothing was saved
+    return store.fail_check(
+        check.id, stage="comparison", reason="reference_kept_moving",
+        error=f"The reference changed {MAX_ATTEMPTS} times while comparing.", detail=detail,
+    )
+```
+
+Rules the example relies on:
+
+- **Outcome must match the content.** `unchanged` is refused if the normalized bytes differ from the
+  reference, or if the normalization version differs (a new version must be compared again, so it is
+  `changed`); `changed` is refused if the content is identical. `initial` is only for a source with no
+  reference; `changes` are only accepted for `changed`. Mistakes raise `ValueError` before anything is written.
+- **Stale reference.** `before_snapshot_id` must still be the source's latest snapshot when the check is
+  saved; otherwise `ConflictError`, and nothing is saved. Compare again with a bounded number of attempts.
+- **Every check is closed.** Any error after `begin_check` should end in `fail_check`; a check left
+  `running` is only closed at the next restart, and then wrongly as `interrupted`.
+- **Failures never move the reference.** `fail_check` records which snapshot was the reference at the time.
+- **`detail`** (both methods) is an optional JSON object for anything else about the run, such as an LLM
+  usage summary. The existing LLM ledger stays the authority on spending.
+
+`fail_check(check_id, *, stage, reason, error, outcome="failed", detail=None, finished_at=None)`:
+`stage` is one of `discovery`, `fetch`, `capture`, `validation`, `normalization`, `comparison`, `storage`,
+`interrupted`; `reason` is a short code such as `inaccessible` (lowercase letters, digits and `_`, starting with a letter,
+up to 64 characters);
+`error` is a message for people (cut at 4,000 characters); `outcome` is `failed`, `ambiguous` or
+`unconfirmed`.
+
+### After a restart
+
+A check still `running` when Radar starts was interrupted. **Run exactly one runner per data folder**
+(see the limitations below), and close them when it starts:
+
+```python
+for check in store.list_running_checks():
+    store.fail_check(check.id, stage="interrupted", reason="restarted",
+                     error="Radar stopped before this check finished.")
+```
+
+Opening a `Store` also deletes temporary folders left by contract writes that crashed more than an hour
+ago. Nothing needs to call it.
+
+### Recording changes
+
+Storage takes its own input type, so it does not depend on the comparison engine's types; the runner maps
+each #11 finding to one:
+
+```python
+from radar.storage.records import ABSENT, RESPONSE, ChangeInput
+
+ChangeInput(
+    change_type="property_removed",                 # the finding's kind
+    location="GET /users > response 200 > body.id", # where it is
+    classification="potentially_breaking",
+    summary="Response field id was removed",
+    direction=RESPONSE,                             # "request", "response" or None
+    rationale="Clients reading id will fail.",      # optional
+    before={"type": "integer"},                     # JSON value, or ABSENT
+    after=ABSENT,                                   # did not exist on that side
+    details={"rule": "removed_property"},           # optional JSON object
+)
+```
+
+| Field | Accepted values |
+|---|---|
+| `classification` | `potentially_breaking`, `non_breaking`, `documentation_only`, `uncertain` (constants in `radar.storage.records`) |
+| `direction` | `request`, `response`, or `None` |
+| `before`, `after` | any JSON value (`None` means the value was null), or `ABSENT` if it did not exist on that side |
+
+`ABSENT` and `None` are kept apart when stored and read back: an added field has `before=ABSENT`; a default
+that changed from null to 0 has `before=None`. `ABSENT` is falsy, so test it with `is ABSENT`. How it appears
+in API JSON is the API's choice (#13).
+
+### Reading history (the API)
+
+| Call | Returns |
+|---|---|
+| `add_source(locator, config=None)`, `get_source(id)`, `find_sources(locator)`, `list_sources(limit=None)`, `update_source_config(id, config)` | `Source(id, locator, config, created_at, latest_snapshot_id)` |
+| `get_check(id)`, `list_checks(source_id, limit=None)` (newest first), `list_running_checks()` | `CheckRun(id, source_id, status, started_at, finished_at, before_snapshot_id, snapshot_id, failure_stage, failure_reason, error, detail, limitations)`, with `.finished` and `.succeeded` |
+| `get_snapshot(id)`, `latest_snapshot(source_id)` (the current reference), `list_snapshots(source_id, limit=None)` (latest capture time first) | `Snapshot(id, source_id, fingerprint, captured_at, normalization_version, openapi_version, content_fingerprint, media_type, provenance)` |
+| `snapshot_documents(snapshot_id)` | `SnapshotDocument(snapshot_id, source_url, path, retrieved_at, media_type, is_root)`, root first |
+| `read_contract(snapshot_id)` | `StoredContract(fingerprint, entry_point, documents, normalized, normalization_version)`; `.original` is the root document's bytes |
+| `get_change(id)`, `list_changes(check_id=…)` (in order) or `list_changes(source_id=…)` (newest check first) | `ChangeRecord(id, check_id, source_id, before_snapshot_id, after_snapshot_id, ordinal, change_type, location, direction, classification, summary, rationale, before_value, after_value, details)` |
+
+```python
+with Store() as store:
+    source = store.find_sources("https://api.example.com")[0]
+    for check in store.list_checks(source.id, limit=20):
+        print(check.started_at, check.status, check.failure_reason or "")
+    latest = store.latest_snapshot(source.id)      # None before the first capture
+    if latest:
+        contract = store.read_contract(latest.id)  # integrity-checked against its manifest
+        print(latest.provenance["source_url"], len(contract.original))
+```
+
+A snapshot's `provenance` holds: `source_url`, `discovery_method`, `discovery_source`, `source_kind`
+(`provider` or `directory_copy`), `evidence` (each with `criterion`, `description`, `source_url`, `outcome`),
+`candidate_limitations` and `package_limitations`. `captured_at` is when the last of its documents was
+retrieved. Use `latest_snapshot` for the current reference, not the first item of `list_snapshots`: when
+two checks overlap, the one saved last can hold an earlier capture. Records are new objects on every call, so changing one never changes what is stored.
+
+IDs look like `src_`, `chk_`, `snap_` or `chg_` followed by 32 hex characters and never change. Times are
+timezone-aware UTC `datetime`s.
+
+### Errors
+
+| Error | Meaning |
+|---|---|
+| `NotFoundError` (a `LookupError`) | No record with that ID, or the ID is malformed |
+| `ConflictError` | The request no longer matches stored state: the check already finished, or the reference moved |
+| `ValueError`, `TypeError` | Invalid input; nothing was written |
+| `StoreError` | The database or contract files could not be read or written, or stored content is missing or damaged |
+
+### Guarantees
+
+- Each write is all or nothing. Contract files are written and synced first, then every record of a check in
+  one database transaction, so no record can point at missing or partial content.
+- History is never edited or deleted. A check finishes once; snapshots, checks and changes are immutable,
+  enforced by the database itself as well as by `Store`.
+- Identical content is stored once: bundles are named by a SHA-256 of their content, and every check still
+  gets its own snapshot and record.
+- `read_contract` checks every file against the manifest and raises `StoreError` rather than return damaged
+  content.
+- A `Store` belongs to the thread that opened it. Several processes may use the same data folder at once
+  (SQLite WAL mode): for example the API reading while the runner writes.
+
+### Issue #10 acceptance evidence
+
+Run: `python -m pytest -c backend/pyproject.toml backend/tests/integration/test_storage_acceptance.py -v`.
+One source is taken through initial, unchanged, two failed and one changed check; every test reads back
+through a newly opened store. Restart and interrupted writes use real separate processes; an interrupted
+write really kills the process part-way, and the test first checks what the crash left on disk.
+
+| Acceptance criterion | Test |
+|---|---|
+| Original and normalized contract content can be stored and retrieved | `test_original_and_normalized_contract_content_can_be_stored_and_retrieved` |
+| Snapshots retain source, capture time, content identity and normalization version | `test_snapshots_retain_source_capture_time_content_identity_and_normalization_version` |
+| Before and after snapshots both remain available | `test_before_and_after_snapshots_both_remain_available` |
+| Identical content reuses stored content while preserving each check's history | `test_identical_content_reuses_stored_content_while_preserving_each_checks_history` |
+| Change records link both snapshots and have stable identifiers | `test_change_records_link_both_snapshots_and_have_stable_identifiers` |
+| Failed checks are recorded without advancing the latest valid snapshot | `test_failed_checks_are_recorded_without_advancing_the_latest_valid_snapshot` |
+| Interrupted writes do not leave successful records pointing to missing or incomplete content | `test_interrupted_writes_do_not_leave_successful_records_pointing_to_missing_or_incomplete_content`, `test_the_next_check_succeeds_after_an_interrupted_one` |
+| Stored history remains available after restarting Radar | `test_stored_history_remains_available_after_restarting_radar` |
+
+Detailed behaviour is covered by `tests/integration/test_repository.py`, `test_complete_check.py`,
+`test_database.py` and `tests/unit/storage/`. CI also builds the wheel and runs the storage tests against
+it, installed outside the checkout.
+
+### Known limitations
+
+- **One runner per data folder.** `list_running_checks` cannot tell a crashed check from one another runner
+  is still working on, so a second runner would close the first one's work as interrupted (its result is
+  then refused, not corrupted). The API and other readers may run alongside. Ownership leases can be added
+  in a later migration if several runners are needed.
+- **One machine, local disk.** Storage is local SQLite plus local files. Use a persistent local disk (a
+  persistent volume when containerised), not a network drive: SQLite locking is unreliable on network file
+  systems. Shared or cloud storage is a deployment-time decision.
+- **Windows durability.** Windows cannot sync folder entries to disk, so after a power cut (not a crash) the
+  last bundle rename may be lost; `read_contract` then raises `StoreError` rather than return wrong content.
+- **A damaged bundle is not repaired automatically.** If files of a stored bundle are changed or lost on
+  disk, `read_contract` raises `StoreError`, and so does a later check that captures the same content,
+  until the folder is restored from a backup. Wrong content is never returned or reused.
+- **Unreferenced bundles are kept.** A crash after a bundle is complete but before its records are saved
+  leaves the bundle unused. It is valid, small, and reused if the same contract is captured again.
+- **No paging cursor.** List calls take `limit` but have no offset or cursor yet.
+- **No retention.** Nothing is ever deleted, so history and contract files grow with every changed contract.

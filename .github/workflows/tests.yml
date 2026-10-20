@@ -19,3 +19,41 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m pip install -e "./backend[test]"
       - run: python -m pytest -c backend/pyproject.toml backend/tests backend/src -q
+
+  # Builds the wheel and tests it installed on its own, outside the checkout,
+  # so files that exist only in the source tree cannot hide a packaging
+  # mistake (such as migrations missing from the wheel).
+  wheel:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build the wheel
+        run: python -m pip wheel --no-deps --wheel-dir "$RUNNER_TEMP/dist" ./backend
+      - name: Install the wheel, not the checkout
+        working-directory: ${{ runner.temp }}
+        run: python -m pip install "$(ls dist/*.whl)[test]"
+      - name: Smoke-test the installed wheel from outside the checkout
+        working-directory: ${{ runner.temp }}
+        run: python -I "$GITHUB_WORKSPACE/backend/tests/packaging/wheel_smoke.py" "$GITHUB_WORKSPACE"
+      - name: Run the storage tests against the installed wheel
+        working-directory: ${{ runner.temp }}
+        # An empty config replaces pyproject.toml, whose pythonpath setting
+        # would otherwise put the checkout's source on the import path.
+        run: |
+          touch empty.ini
+          python -I -m pytest -c empty.ini -q -p no:cacheprovider \
+            "$GITHUB_WORKSPACE/backend/tests/unit/storage" \
+            "$GITHUB_WORKSPACE/backend/tests/integration/test_database.py" \
+            "$GITHUB_WORKSPACE/backend/tests/integration/test_repository.py" \
+            "$GITHUB_WORKSPACE/backend/tests/integration/test_complete_check.py" \
+            "$GITHUB_WORKSPACE/backend/tests/integration/test_storage_acceptance.py"
