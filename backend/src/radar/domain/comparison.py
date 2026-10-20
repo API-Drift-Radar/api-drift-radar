@@ -48,6 +48,7 @@ class ContractFinding:
     after_value: Any = None
     before_location: SourceLocation | None = None
     after_location: SourceLocation | None = None
+    subject: str | None = None  # a short human label for what changed, such as "request body (application/json) > age"
 
     def __post_init__(self):
         if self.category not in CATEGORIES:

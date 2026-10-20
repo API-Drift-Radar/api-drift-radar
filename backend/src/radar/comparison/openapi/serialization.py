@@ -14,7 +14,7 @@ def finding_to_dict(finding: ContractFinding) -> dict:
         "path": finding.path, "before_present": finding.before_present, "after_present": finding.after_present,
         "before_value": finding.before_value, "after_value": finding.after_value,
         "before_location": _location(finding.before_location), "after_location": _location(finding.after_location),
-        "explanation": finding.explanation,
+        "explanation": finding.explanation, "subject": finding.subject,
     }
 
 
