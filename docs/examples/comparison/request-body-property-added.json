@@ -1,0 +1,54 @@
+{
+  "description": "Existing clients do not send a new required property.",
+  "result": {
+    "ruleset_version": "request-schemas-1",
+    "findings": [
+      {
+        "key": "schema.property_added|POST|/pets|request-body:application/json|/ownerId",
+        "rule_id": "schema.property_added",
+        "category": "potentially_breaking",
+        "change_kind": "added",
+        "direction": "request",
+        "method": "POST",
+        "path": "/pets",
+        "before_present": false,
+        "after_present": true,
+        "before_value": null,
+        "after_value": {
+          "required": true
+        },
+        "before_location": null,
+        "after_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/paths/~1pets/post/requestBody/content/application~1json/schema/properties/ownerId"
+        },
+        "explanation": "The required property `ownerId` is newly declared. Existing clients do not send it, so they may be rejected.",
+        "subject": "request body (application/json) > ownerId"
+      }
+    ],
+    "limitations": [
+      {
+        "code": "scope_not_assessed",
+        "scope": "contract",
+        "blocks_classification": false,
+        "explanation": "Not assessed yet: response schemas, media-type encoding, documentation (descriptions, examples, deprecation), path-level and operation-level servers, callbacks. No findings in this result does not mean the rest of the contract is unchanged."
+      }
+    ],
+    "coverage": {
+      "complete": false,
+      "assessed": [
+        "operations",
+        "servers",
+        "parameters",
+        "request bodies"
+      ],
+      "not_assessed": [
+        "response schemas",
+        "media-type encoding",
+        "documentation (descriptions, examples, deprecation)",
+        "path-level and operation-level servers",
+        "callbacks"
+      ]
+    }
+  }
+}

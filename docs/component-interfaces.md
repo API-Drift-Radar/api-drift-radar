@@ -1075,7 +1075,7 @@ it, installed outside the checkout.
 - **No retention.** Nothing is ever deleted, so history and contract files grow with every changed contract.
 
 
-## Contract comparison: operations and parameters (issue #11, increments 1 and 2)
+## Contract comparison: operations, parameters and request bodies (issue #11, increments 1 to 3a)
 
 ```python
 from radar.comparison.openapi import compare_contracts, result_to_dict
@@ -1083,7 +1083,7 @@ result = compare_contracts(before_package, after_package)   # two ValidatedContr
 ```
 
 - **Perspective:** a client that calls the API. Findings are potential risk under Radar's rules, not proof of breakage.
-- **Rules (ruleset `parameters-1`):** `operation.removed` is `potentially_breaking`; `operation.added` is
+- **Rules (ruleset `request-schemas-1`):** `operation.removed` is `potentially_breaking`; `operation.added` is
   `non_breaking_under_rules`; `servers.changed` is `uncertain`. A renamed path is a removal plus an addition. Path
   parameter names are normalized (`/pets/{id}` equals `/pets/{petId}`).
 - **Parameter rules** (`direction: request`, only for operations present in both contracts; a new or removed operation
@@ -1093,11 +1093,38 @@ result = compare_contracts(before_package, after_package)   # two ValidatedContr
   `parameter.added` is `potentially_breaking` if required and `non_breaking_under_rules` if optional;
   `parameter.removed` is `potentially_breaking` (an old client may still send it); `parameter.required_changed` is
   `potentially_breaking` when it becomes required and `non_breaking_under_rules` when it becomes optional;
-  `parameter.schema_changed` (the schema or `content` differs once references are expanded and annotations removed) and
-  `parameter.encoding_changed` (`style`, `explode`, `allowReserved`, defaults applied) are `uncertain` until the schema
-  rules exist. Descriptions, examples and deprecation are not assessed. A parameter that cannot be read is a limitation
-  (`parameter_unresolved`, `parameter_unreadable`, `parameter_duplicate`, `parameter_schema_unresolved`) and only that
-  operation is skipped. A finding's parameter is the last part of its key (`query:limit`, `path:0`).
+  `parameter.encoding_changed` (`style`, `explode`, `allowReserved`, defaults applied) is `uncertain`, and so is
+  `parameter.schema_changed`, which now only means a parameter switched between `schema` and `content` (or its media
+  types differ) so its schemas cannot be paired. The parameter's schemas themselves use the schema rules below.
+  Descriptions, examples and deprecation are not assessed. A parameter that cannot be read is a limitation
+  (`parameter_unresolved`, `parameter_unreadable`, `parameter_duplicate`) and only that operation is skipped.
+- **Request body rules** (`direction: request`): `request_body.added` (required: `potentially_breaking`; optional:
+  `non_breaking_under_rules`), `request_body.removed` (`potentially_breaking`), `request_body.required_changed`,
+  `request_body.media_added` (`non_breaking_under_rules`), `request_body.media_removed` (`potentially_breaking`). Media
+  types are compared case-insensitively. For a media type present in both, the schemas are compared with the schema rules.
+- **Schema rules** (`schema.*`, in `schemas.py`; request direction is wired in, the engine also implements response):
+
+  | change | sent (request) | received (response) |
+  |---|---|---|
+  | type or enum accepts more (`integer` is contained in `number`) | non-breaking | potentially breaking |
+  | type or enum accepts less | potentially breaking | non-breaking |
+  | incompatible type; enum values both added and removed | potentially breaking | potentially breaking |
+  | allows / forbids `null` (3.0 `nullable`, 3.1 type arrays) | non-breaking / potentially breaking | the reverse |
+  | optional property becomes required | potentially breaking | non-breaking |
+  | required property becomes optional | non-breaking | potentially breaking |
+  | property added | potentially breaking if required, else non-breaking | non-breaking (*) |
+  | property removed | potentially breaking | potentially breaking |
+
+  (*) Assumes clients ignore properties they do not know; `uncertain` if the earlier object was closed
+  (`additionalProperties: false`). Read-only properties are ignored in requests and write-only ones in responses
+  (a change to the flag itself is `schema.access_changed`, `uncertain`). Changed constraints (`schema.constraint_changed`:
+  `minimum`, `pattern`, `format`, `default`, ...) and changed unsupported keywords (`schema.unsupported_changed`:
+  `allOf`/`oneOf`/`anyOf`/`not`, `additionalProperties`, extensions, ...) are `uncertain`, and they also downgrade any
+  non-breaking finding under the same schema (and any schema that uses composition) to `uncertain`, with the limitation
+  `schema_construct_not_classified`. `enum` and `required` are sets. References are expanded offline (cycles are cut with
+  a marker) and annotations (`description`, `title`, `example`, `deprecated`, ...) are ignored. A finding's location
+  points into the document that really defines the schema. The `subject` field is a short human label such as
+  `request body (application/json) > owner.name`; the last part of the key is the schema path (`/owner/name`, `/tags/[]`).
 - **Finding:** `key` (deterministic, no timestamps; storage deduplicates on it, and owns persistent record IDs),
   `rule_id`, `category`, `change_kind`, `direction` (`request`/`response`/`none`; `none` for whole operations), method,
   path, `before_present`/`after_present` (absence is never a null value), `before_value`/`after_value`, and a
@@ -1110,4 +1137,4 @@ result = compare_contracts(before_package, after_package)   # two ValidatedContr
 - **Measured:** `python -m radar.comparison.openapi.evaluation` scores the labeled fixtures in
   `backend/tests/fixtures/comparison/` (detection precision/recall, classification accuracy). The labels are written
   from the rules, and the fixture count is small, so it demonstrates the rules, not real-world accuracy.
-- **Example:** `docs/examples/comparison/mixed-changes.json`, checked by a test.
+- **Examples:** `docs/examples/comparison/mixed-changes.json` and `request-body-property-added.json`, checked by a test.

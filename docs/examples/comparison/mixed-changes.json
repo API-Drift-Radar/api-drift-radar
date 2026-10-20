@@ -1,7 +1,7 @@
 {
   "description": "Removal, addition, a parameter rename (no finding), a wording change (not assessed) and a servers change.",
   "result": {
-    "ruleset_version": "parameters-1",
+    "ruleset_version": "request-schemas-1",
     "findings": [
       {
         "key": "servers.changed",
@@ -27,7 +27,8 @@
           "document_url": "https://api.acme.com/openapi.json",
           "pointer": "/servers"
         },
-        "explanation": "The declared servers changed. Effective request URLs may have moved even where the declared paths are the same; this comparison does not resolve effective URLs."
+        "explanation": "The declared servers changed. Effective request URLs may have moved even where the declared paths are the same; this comparison does not resolve effective URLs.",
+        "subject": null
       },
       {
         "key": "operation.added|GET|/owners",
@@ -46,7 +47,8 @@
           "document_url": "https://api.acme.com/openapi.json",
           "pointer": "/paths/~1owners/get"
         },
-        "explanation": "GET /owners is newly declared. Existing clients do not depend on it, so it does not affect them."
+        "explanation": "GET /owners is newly declared. Existing clients do not depend on it, so it does not affect them.",
+        "subject": null
       },
       {
         "key": "operation.removed|DELETE|/pets/{}",
@@ -65,7 +67,8 @@
           "pointer": "/paths/~1pets~1{id}/delete"
         },
         "after_location": null,
-        "explanation": "DELETE /pets/{id} is no longer declared. Existing clients calling this operation may be affected."
+        "explanation": "DELETE /pets/{id} is no longer declared. Existing clients calling this operation may be affected.",
+        "subject": null
       }
     ],
     "limitations": [
@@ -73,7 +76,7 @@
         "code": "scope_not_assessed",
         "scope": "contract",
         "blocks_classification": false,
-        "explanation": "Not assessed yet: request bodies, response schemas, documentation (descriptions, examples, deprecation), path-level and operation-level servers, callbacks. No findings in this result does not mean the rest of the contract is unchanged."
+        "explanation": "Not assessed yet: response schemas, media-type encoding, documentation (descriptions, examples, deprecation), path-level and operation-level servers, callbacks. No findings in this result does not mean the rest of the contract is unchanged."
       }
     ],
     "coverage": {
@@ -81,11 +84,12 @@
       "assessed": [
         "operations",
         "servers",
-        "parameters"
+        "parameters",
+        "request bodies"
       ],
       "not_assessed": [
-        "request bodies",
         "response schemas",
+        "media-type encoding",
         "documentation (descriptions, examples, deprecation)",
         "path-level and operation-level servers",
         "callbacks"
