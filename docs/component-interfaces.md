@@ -1075,7 +1075,7 @@ it, installed outside the checkout.
 - **No retention.** Nothing is ever deleted, so history and contract files grow with every changed contract.
 
 
-## Contract comparison: operations, parameters, request bodies and responses (issue #11, increments 1 to 3b)
+## Contract comparison (issue #11, increments 1 to 4)
 
 ```python
 from radar.comparison.openapi import compare_contracts, result_to_dict
@@ -1083,7 +1083,7 @@ result = compare_contracts(before_package, after_package)   # two ValidatedContr
 ```
 
 - **Perspective:** a client that calls the API. Findings are potential risk under Radar's rules, not proof of breakage.
-- **Rules (ruleset `schemas-1`):** `operation.removed` is `potentially_breaking`; `operation.added` is
+- **Rules (ruleset `contract-1`):** `operation.removed` is `potentially_breaking`; `operation.added` is
   `non_breaking_under_rules`; `servers.changed` is `uncertain`. A renamed path is a removal plus an addition. Path
   parameter names are normalized (`/pets/{id}` equals `/pets/{petId}`).
 - **Parameter rules** (`direction: request`, only for operations present in both contracts; a new or removed operation
@@ -1102,6 +1102,16 @@ result = compare_contracts(before_package, after_package)   # two ValidatedContr
   `non_breaking_under_rules`), `request_body.removed` (`potentially_breaking`), `request_body.required_changed`,
   `request_body.media_added` (`non_breaking_under_rules`), `request_body.media_removed` (`potentially_breaking`). Media
   types are compared case-insensitively. For a media type present in both, the schemas are compared with the schema rules.
+- **Documentation and deprecation rules** (`direction: none`, in `documentation.py` and the schema walk): a changed,
+  added or removed `summary`, `description`, `title`, `example`/`examples` or `externalDocs` is `documentation.changed`,
+  `documentation_only`, at the operation, path item, parameter, request body, response, media type and each schema; the
+  contract's `info` (title, summary, description, version, termsOfService) is covered too, and the version label alone is
+  said to prove nothing about compatibility. Whitespace and wrapping are not a change; examples compare as data. A
+  `deprecated` flag set or cleared is `deprecation.changed`, `non_breaking_under_rules` (it still works today; it is a
+  signal). `operation.id_changed` is `uncertain`: generated clients may use `operationId` as a method name. A path-level
+  description is reported once, not per operation, and a schema used in several places is reported where it is used.
+  Values are shown truncated to 1000 characters; the location points at the full text. Tags and security requirements
+  are not assessed.
 - **Response rules** (`direction: response`): responses are matched by status (case-insensitive: `2XX` and `200` are
   different keys; `default` is its own key), then by media type. `response.removed` is `potentially_breaking` for a `2xx`
   status (the success outcome clients rely on) and `uncertain` for any other; `response.added` is `uncertain`;
@@ -1137,12 +1147,12 @@ result = compare_contracts(before_package, after_package)   # two ValidatedContr
   path, `before_present`/`after_present` (absence is never a null value), `before_value`/`after_value`, and a
   `before_location`/`after_location` (`document_url` plus JSON Pointer; a path item reached through `$ref` is located in
   the document that defines it).
-- **Limitations and coverage:** `coverage.complete` is false while response headers and links, media-type encoding, documentation
-  and callbacks are unassessed, so an empty `findings` list never means "unchanged". Limitations also name unresolved path items,
+- **Limitations and coverage:** `coverage.complete` is false while response headers and links, media-type encoding, path-level and operation-level
+  servers, callbacks, security requirements and tags are unassessed, so an empty `findings` list never means "unchanged". Limitations also name unresolved path items,
   ambiguous path templates, webhooks, and inputs that are `unconfirmed` or a `directory_copy` (the comparator still
   compares; monitoring decides whether to alert).
 - **Measured:** `python -m radar.comparison.openapi.evaluation` scores the labeled fixtures in
   `backend/tests/fixtures/comparison/` (detection precision/recall, classification accuracy). The labels are written
   from the rules, and the fixture count is small, so it demonstrates the rules, not real-world accuracy.
-- **Examples:** `docs/examples/comparison/mixed-changes.json`, `request-body-property-added.json` and
-  `shared-schema-two-directions.json`, checked by a test.
+- **Examples:** `docs/examples/comparison/mixed-changes.json`, `request-body-property-added.json`,
+  `shared-schema-two-directions.json` and `documentation-and-structure.json`, checked by a test.

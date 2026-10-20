@@ -1,0 +1,86 @@
+{
+  "description": "A wording change next to a type change: two findings in two categories.",
+  "result": {
+    "ruleset_version": "contract-1",
+    "findings": [
+      {
+        "key": "documentation.changed|POST|/pets|request-body:application/json|/age|description",
+        "rule_id": "documentation.changed",
+        "category": "documentation_only",
+        "change_kind": "changed",
+        "direction": "none",
+        "method": "POST",
+        "path": "/pets",
+        "before_present": true,
+        "after_present": true,
+        "before_value": "Years",
+        "after_value": "Age",
+        "before_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/paths/~1pets/post/requestBody/content/application~1json/schema/properties/age/description"
+        },
+        "after_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/paths/~1pets/post/requestBody/content/application~1json/schema/properties/age/description"
+        },
+        "explanation": "The description of the schema at `age` changed. This is documentation; it does not change what the API accepts or returns.",
+        "subject": "request body (application/json) > age > description"
+      },
+      {
+        "key": "schema.type_changed|POST|/pets|request-body:application/json|/age",
+        "rule_id": "schema.type_changed",
+        "category": "potentially_breaking",
+        "change_kind": "changed",
+        "direction": "request",
+        "method": "POST",
+        "path": "/pets",
+        "before_present": true,
+        "after_present": true,
+        "before_value": [
+          "integer"
+        ],
+        "after_value": [
+          "string"
+        ],
+        "before_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/paths/~1pets/post/requestBody/content/application~1json/schema/properties/age"
+        },
+        "after_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/paths/~1pets/post/requestBody/content/application~1json/schema/properties/age"
+        },
+        "explanation": "At `age` the type changed from integer to string, which are not compatible. Existing clients are likely affected.",
+        "subject": "request body (application/json) > age"
+      }
+    ],
+    "limitations": [
+      {
+        "code": "scope_not_assessed",
+        "scope": "contract",
+        "blocks_classification": false,
+        "explanation": "Not assessed yet: response headers and links, media-type encoding, path-level and operation-level servers, callbacks, security requirements, tags. No findings in this result does not mean the rest of the contract is unchanged."
+      }
+    ],
+    "coverage": {
+      "complete": false,
+      "assessed": [
+        "operations",
+        "servers",
+        "parameters",
+        "request bodies",
+        "responses",
+        "documentation",
+        "deprecation"
+      ],
+      "not_assessed": [
+        "response headers and links",
+        "media-type encoding",
+        "path-level and operation-level servers",
+        "callbacks",
+        "security requirements",
+        "tags"
+      ]
+    }
+  }
+}

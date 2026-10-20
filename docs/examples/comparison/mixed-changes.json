@@ -1,7 +1,7 @@
 {
-  "description": "Removal, addition, a parameter rename (no finding), a wording change (not assessed) and a servers change.",
+  "description": "Removal, addition, a parameter rename (no finding), a reworded summary (documentation only) and a servers change.",
   "result": {
-    "ruleset_version": "schemas-1",
+    "ruleset_version": "contract-1",
     "findings": [
       {
         "key": "servers.changed",
@@ -51,6 +51,29 @@
         "subject": null
       },
       {
+        "key": "documentation.changed|GET|/pets|operation|summary",
+        "rule_id": "documentation.changed",
+        "category": "documentation_only",
+        "change_kind": "changed",
+        "direction": "none",
+        "method": "GET",
+        "path": "/pets",
+        "before_present": true,
+        "after_present": true,
+        "before_value": "List pets",
+        "after_value": "List all pets",
+        "before_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/paths/~1pets/get/summary"
+        },
+        "after_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/paths/~1pets/get/summary"
+        },
+        "explanation": "The summary of GET /pets changed. This is documentation; it does not change what the API accepts or returns.",
+        "subject": "GET /pets > summary"
+      },
+      {
         "key": "operation.removed|DELETE|/pets/{}",
         "rule_id": "operation.removed",
         "category": "potentially_breaking",
@@ -76,7 +99,7 @@
         "code": "scope_not_assessed",
         "scope": "contract",
         "blocks_classification": false,
-        "explanation": "Not assessed yet: response headers and links, media-type encoding, documentation (descriptions, examples, deprecation), path-level and operation-level servers, callbacks. No findings in this result does not mean the rest of the contract is unchanged."
+        "explanation": "Not assessed yet: response headers and links, media-type encoding, path-level and operation-level servers, callbacks, security requirements, tags. No findings in this result does not mean the rest of the contract is unchanged."
       }
     ],
     "coverage": {
@@ -86,14 +109,17 @@
         "servers",
         "parameters",
         "request bodies",
-        "responses"
+        "responses",
+        "documentation",
+        "deprecation"
       ],
       "not_assessed": [
         "response headers and links",
         "media-type encoding",
-        "documentation (descriptions, examples, deprecation)",
         "path-level and operation-level servers",
-        "callbacks"
+        "callbacks",
+        "security requirements",
+        "tags"
       ]
     }
   }
