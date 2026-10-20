@@ -13,8 +13,9 @@ type (case-insensitive). Rules, from the point of view of a client written again
 Response headers and links are not assessed.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from radar.comparison.openapi.documentation import MEDIA_FIELDS, RESPONSE_FIELDS, compare_fields
 from radar.comparison.openapi.operations import Operation, normalize_path
 from radar.comparison.openapi.references import Unresolved
 from radar.comparison.openapi.schemas import media_schema_ref, schema_findings
@@ -29,6 +30,7 @@ class Response:
     status: str
     media: dict  # normalized media type -> (media object, url, tokens)
     where: SourceLocation
+    node: dict = field(compare=False, default_factory=dict)
 
 
 def read_responses(operation: Operation) -> dict[str, Response]:
@@ -51,7 +53,7 @@ def read_responses(operation: Operation) -> dict[str, Response]:
             if key in media:
                 raise Unresolved(f"The media type {name!r} of response {raw!r} is declared twice.")
             media[key] = (value, url, (*tokens, "content", name))
-        found[status] = Response(status, media, SourceLocation(url, json_pointer(tokens)))
+        found[status] = Response(status, media, SourceLocation(url, json_pointer(tokens)), node)
     return found
 
 
@@ -94,6 +96,9 @@ def compare_responses(before_op: Operation, after_op: Operation, limitations: li
                     "Clients rely on the success outcome." if success else
                     "Clients may handle it, or the API may now report this outcome differently.")))
             continue
+        findings.extend(compare_fields(
+            after_op.method, after_op.declared_path, f"response:{status}", f"the {status} response of {label}", old.node,
+            new.node, old.where, new.where, RESPONSE_FIELDS))
         for name in sorted(old.media.keys() | new.media.keys()):
             if name not in old.media:
                 findings.append(_finding(
@@ -113,6 +118,12 @@ def compare_responses(before_op: Operation, after_op: Operation, limitations: li
                         "schema_unresolved", f"The {status} {name} response of {label} could not be read: {error}",
                         label, True))
                     continue
+                old_media, new_media = old.media[name], new.media[name]
+                findings.extend(compare_fields(
+                    after_op.method, after_op.declared_path, f"response:{status}:{name}",
+                    f"the {status} {name} response of {label}", old_media[0], new_media[0],
+                    SourceLocation(old_media[1], json_pointer(old_media[2])),
+                    SourceLocation(new_media[1], json_pointer(new_media[2])), MEDIA_FIELDS))
                 findings.extend(schema_findings(
                     after_op.method, after_op.declared_path, normalize_path(after_op.declared_path),
                     f"response:{status}:{name}", f"response {status} ({name})", old_ref, new_ref, RESPONSE, limitations))

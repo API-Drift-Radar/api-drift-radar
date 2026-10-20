@@ -20,10 +20,11 @@ Rules (all `direction: request`), from the point of view of a client written aga
 Descriptions, examples and deprecation are documentation and are not assessed here.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
 from typing import Any
 
+from radar.comparison.openapi.documentation import PARAMETER_FIELDS, compare_fields
 from radar.comparison.openapi.operations import Operation, normalize_path
 from radar.comparison.openapi.references import Documents, Unresolved
 from radar.comparison.openapi.schemas import SchemaRef, schema_findings
@@ -48,6 +49,7 @@ class Parameter:
     content: dict | None  # media type -> SchemaRef, when the parameter uses `content` instead of `schema`
     encoding: tuple  # (style, explode, allowReserved) with the specification defaults applied
     where: SourceLocation
+    node: dict = field(compare=False, default_factory=dict)  # the parameter object, for its documentation
 
 
 class _Skip(Exception):
@@ -94,7 +96,7 @@ def _read(docs: Documents, entry: Any, url: str, tokens: tuple, declared_path: s
         _identity(location_in, name, declared_path), name, location_in,
         True if location_in == "path" else bool(node.get("required", False)),  # path parameters are always required
         *_schemas(docs, node, node_url, node_tokens), _encoding(node, location_in),
-        SourceLocation(node_url, json_pointer(node_tokens)))
+        SourceLocation(node_url, json_pointer(node_tokens)), node)
 
 
 def effective_parameters(operation: Operation) -> dict[tuple, Parameter]:
@@ -191,6 +193,9 @@ def compare_parameters(before_op: Operation, after_op: Operation, limitations: l
                 findings.extend(schema_findings(
                     after_op.method, after_op.declared_path, normalize_path(after_op.declared_path), scope,
                     f"{where}" + (f" ({media})" if media else ""), old_schema, new_schema, REQUEST, limitations))
+            findings.extend(compare_fields(
+                after_op.method, after_op.declared_path, f"parameter:{identity[0]}:{identity[1]}", where, old.node, new.node,
+                old.where, new.where, PARAMETER_FIELDS))
             if old.encoding != new.encoding:
                 findings.append(_finding(
                     "parameter.encoding_changed", UNCERTAIN, CHANGED, after_op, old, new,

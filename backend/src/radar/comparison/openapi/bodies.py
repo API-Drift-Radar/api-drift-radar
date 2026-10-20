@@ -12,8 +12,9 @@ Rules, from the point of view of a client written against the earlier contract:
 Media types are compared case-insensitively. Media-type `encoding` and `examples` are not assessed.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from radar.comparison.openapi.documentation import BODY_FIELDS, MEDIA_FIELDS, compare_fields
 from radar.comparison.openapi.operations import Operation, normalize_path
 from radar.comparison.openapi.references import Unresolved
 from radar.comparison.openapi.schemas import media_schema_ref, schema_findings
@@ -29,6 +30,7 @@ class RequestBody:
     required: bool
     media: dict  # normalized media type -> (media object, url, tokens)
     where: SourceLocation
+    node: dict = field(compare=False, default_factory=dict)
 
 
 def read_request_body(operation: Operation) -> RequestBody | None:
@@ -46,7 +48,7 @@ def read_request_body(operation: Operation) -> RequestBody | None:
         if key in media:
             raise Unresolved(f"The media type {name!r} is declared twice.")
         media[key] = (value, url, (*node_tokens, "content", name))
-    return RequestBody(node.get("required") is True, media, SourceLocation(url, json_pointer(node_tokens)))
+    return RequestBody(node.get("required") is True, media, SourceLocation(url, json_pointer(node_tokens)), node)
 
 
 def _finding(rule, category, kind, operation, label, before, after, explanation, suffix=""):
@@ -101,6 +103,9 @@ def compare_request_bodies(before_op: Operation, after_op: Operation, limitation
             "request_body.required_changed", category, CHANGED, operation, "request body", before, after,
             f"The request body of {label_scope} changed from {'required' if before.required else 'optional'} to "
             f"{'required' if after.required else 'optional'}. {effect}"))
+    findings.extend(compare_fields(
+        after_op.method, after_op.declared_path, "request-body", f"the request body of {label_scope}", before.node,
+        after.node, before.where, after.where, BODY_FIELDS))
     for name in sorted(before.media.keys() | after.media.keys()):
         if name not in before.media:
             findings.append(_media_finding(
@@ -119,6 +124,11 @@ def compare_request_bodies(before_op: Operation, after_op: Operation, limitation
                     "schema_unresolved", f"The {name} request body of {label_scope} could not be read: {error}",
                     label_scope, True))
                 continue
+            old_media, new_media = before.media[name], after.media[name]
+            findings.extend(compare_fields(
+                after_op.method, after_op.declared_path, f"request-body:{name}", f"the {name} request body of {label_scope}",
+                old_media[0], new_media[0], SourceLocation(old_media[1], json_pointer(old_media[2])),
+                SourceLocation(new_media[1], json_pointer(new_media[2])), MEDIA_FIELDS))
             findings.extend(schema_findings(
                 after_op.method, after_op.declared_path, normalize_path(after_op.declared_path), f"request-body:{name}",
                 f"request body ({name})", old_ref, new_ref, REQUEST, limitations))
