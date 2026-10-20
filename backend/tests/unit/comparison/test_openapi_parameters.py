@@ -116,7 +116,8 @@ def test_parameter_results_are_deterministic_and_serializable():
 
 def test_coverage_includes_parameters_bodies_and_responses_but_is_never_complete():
     coverage = compare(CONTRACT, copy.deepcopy(CONTRACT)).coverage
-    assert {'parameters', 'request bodies', 'responses'} <= set(coverage.assessed) and coverage.complete is False
+    assert {'parameters', 'request bodies', 'responses', 'documentation'} <= set(coverage.assessed)
+    assert coverage.complete is False
     assert 'response headers and links' in coverage.not_assessed
 
 

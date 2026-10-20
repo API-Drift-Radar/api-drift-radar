@@ -1,4 +1,19 @@
 {
-  "findings": [],
+  "findings": [
+    {
+      "rule_id": "documentation.changed",
+      "method": "",
+      "path": "/pets",
+      "category": "documentation_only",
+      "target": "path-item|summary"
+    },
+    {
+      "rule_id": "documentation.changed",
+      "method": "",
+      "path": "/pets",
+      "category": "documentation_only",
+      "target": "path-item|description"
+    }
+  ],
   "limitations": []
 }

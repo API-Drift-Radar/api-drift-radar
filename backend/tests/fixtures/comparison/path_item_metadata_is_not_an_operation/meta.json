@@ -1,3 +1,3 @@
 {
-  "rationale": "Path-item fields other than the eight methods are not operations."
+  "rationale": "Path-item summary and description are documentation, reported once; extensions and servers are not operations."
 }

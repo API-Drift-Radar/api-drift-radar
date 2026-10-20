@@ -1,0 +1,12 @@
+{
+  "findings": [
+    {
+      "rule_id": "documentation.changed",
+      "method": "GET",
+      "path": "/pets",
+      "category": "documentation_only",
+      "target": "parameter:query:limit|example"
+    }
+  ],
+  "limitations": []
+}

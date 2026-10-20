@@ -35,7 +35,7 @@ def test_every_labeled_fixture_matches_exactly():
           f'classification accuracy {report.classification_accuracy}')
     assert report.failures == []
     assert (report.precision, report.recall, report.classification_accuracy) == (1.0, 1.0, 1.0)
-    assert len(cases) >= 125 and report.expected >= 100
+    assert len(cases) >= 150 and report.expected >= 130
 
 
 def test_the_fixtures_cover_every_rule():
@@ -47,7 +47,8 @@ def test_the_fixtures_cover_every_rule():
                       'schema.nullability_changed', 'schema.enum_changed', 'schema.property_added',
                       'schema.property_removed', 'schema.required_changed', 'schema.constraint_changed',
                       'schema.unsupported_changed', 'schema.access_changed', 'response.added', 'response.removed',
-                      'response.media_added', 'response.media_removed'}
+                      'response.media_added', 'response.media_removed', 'documentation.changed', 'deprecation.changed',
+                      'operation.id_changed'}
     assert any(not case.expected_findings for case in load_cases())  # unchanged contracts are covered
 
 
@@ -126,8 +127,8 @@ def test_no_findings_never_means_the_whole_contract_is_unchanged():
     result = compare(PETS, copy.deepcopy(PETS))
     assert result.findings == () and result.coverage.complete is False
     assert 'response headers and links' in result.coverage.not_assessed
-    assert 'documentation (descriptions, examples, deprecation)' in result.coverage.not_assessed
-    assert {'parameters', 'request bodies', 'responses'} <= set(result.coverage.assessed)
+    assert {'security requirements', 'tags'} <= set(result.coverage.not_assessed)
+    assert {'parameters', 'request bodies', 'responses', 'documentation', 'deprecation'} <= set(result.coverage.assessed)
     scope = next(l for l in result.limitations if l.code == 'scope_not_assessed')
     assert 'does not mean the rest of the contract is unchanged' in scope.explanation
 
@@ -187,7 +188,7 @@ def test_normalize_path_leaves_everything_but_parameter_names_alone():
 def test_the_result_serializes_to_plain_json():
     result = compare(PETS, without(PETS, '/pets/{id}', 'delete'))
     document = json.loads(json.dumps(result_to_dict(result)))
-    assert document['ruleset_version'] == RULESET_VERSION == 'schemas-1'
+    assert document['ruleset_version'] == RULESET_VERSION == 'contract-1'
     assert document['coverage']['complete'] is False
     assert document['findings'][0]['before_location'] == {
         'document_url': 'https://api.acme.com/openapi.json', 'pointer': '/paths/~1pets~1{id}/delete'}
@@ -211,7 +212,8 @@ def test_the_four_agreed_categories_exist_and_findings_reject_unknown_values():
 
 @pytest.mark.parametrize('fixture,filename', [('mixed_changes', 'mixed-changes.json'),
                                                ('body_property_required_added', 'request-body-property-added.json'),
-                                               ('resp_shared_schema_reported_per_direction', 'shared-schema-two-directions.json')])
+                                               ('resp_shared_schema_reported_per_direction', 'shared-schema-two-directions.json'),
+                                               ('doc_with_a_structural_change_reports_both', 'documentation-and-structure.json')])
 def test_the_documented_examples_match_what_the_code_produces(fixture, filename):
     """docs/examples/comparison/*.json; regenerate deliberately with UPDATE_SAMPLES=1."""
     import os

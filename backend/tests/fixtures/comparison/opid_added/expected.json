@@ -1,0 +1,11 @@
+{
+  "findings": [
+    {
+      "rule_id": "operation.id_changed",
+      "method": "GET",
+      "path": "/pets",
+      "category": "uncertain"
+    }
+  ],
+  "limitations": []
+}

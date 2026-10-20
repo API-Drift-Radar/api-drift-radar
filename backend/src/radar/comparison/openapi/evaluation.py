@@ -5,7 +5,7 @@
 A case is a directory under `backend/tests/fixtures/comparison/` holding `before.json`, `after.json`, `expected.json`
 and optionally `meta.json`. Labels are written from the rule specification (the module docstring of `compare`), not
 generated from the comparator's output. `expected.json` lists the findings (`rule_id`, `method`, `path` as the
-normalized identity, `target` for parameter, request-body, response and schema rules, and `category`) and the limitation codes that must appear.
+normalized identity, `target` for rules about a parameter, body, response, schema or documentation field, and `category`) and the limitation codes that must appear.
 
 Detection: a finding is found when its (rule, method, normalized path, target) identity is present; precision and recall are
 computed over those identities. Classification: of the findings that were detected, the share with the expected
@@ -77,10 +77,10 @@ def identity(finding) -> tuple:
     """(rule, method, normalized path, target): what the finding is about, taken from the rest of its key.
 
     A parameter is `in:name` (`path:N` for the Nth path placeholder). A schema change is `scope|schema path[|keyword]`,
-    such as `request-body:application/json|/owner/age`.
+    such as `request-body:application/json|/owner/age`; documentation is `scope|field`, such as `operation|summary`.
     """
-    prefixed = finding.rule_id.startswith(("parameter.", "request_body.", "response.", "schema."))
-    target = finding.key.split("|", 3)[3] if prefixed else ""
+    parts = finding.key.split("|", 3)
+    target = parts[3] if len(parts) > 3 else ""  # operation and server rules have no target
     return finding.rule_id, finding.method or "", normalize_path(finding.path or ""), target
 
 

@@ -14,9 +14,14 @@
     },
     {
       "rule_id": "servers.changed",
-      "method": "",
-      "path": "",
       "category": "uncertain"
+    },
+    {
+      "rule_id": "documentation.changed",
+      "method": "GET",
+      "path": "/pets",
+      "category": "documentation_only",
+      "target": "operation|summary"
     }
   ],
   "limitations": []

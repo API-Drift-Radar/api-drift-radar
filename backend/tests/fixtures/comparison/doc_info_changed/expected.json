@@ -1,0 +1,26 @@
+{
+  "findings": [
+    {
+      "rule_id": "documentation.changed",
+      "method": "",
+      "path": "",
+      "category": "documentation_only",
+      "target": "info|title"
+    },
+    {
+      "rule_id": "documentation.changed",
+      "method": "",
+      "path": "",
+      "category": "documentation_only",
+      "target": "info|description"
+    },
+    {
+      "rule_id": "documentation.changed",
+      "method": "",
+      "path": "",
+      "category": "documentation_only",
+      "target": "info|version"
+    }
+  ],
+  "limitations": []
+}
