@@ -314,6 +314,16 @@ class SchemaRef:
     tokens: tuple
 
 
+def media_schema_ref(docs: Documents, media: tuple) -> SchemaRef:
+    """The schema of a media-type object, given as (object, url, tokens). No `schema` means any value."""
+    value, url, tokens = media
+    if not isinstance(value, dict) or "$ref" in value:
+        raise Unresolved("The media type object is missing or is a reference, which is not supported.")
+    if "schema" in value:
+        return SchemaRef(docs, value["schema"], url, (*tokens, "schema"))
+    return SchemaRef(docs, {}, url, tokens)
+
+
 def compare_schemas(before: SchemaRef, after: SchemaRef, direction: str) -> tuple[list[SchemaChange], bool, bool]:
     """(changes, unclassified, truncated). Raises Unresolved if either schema cannot be expanded offline."""
     differ = _Differ(direction)

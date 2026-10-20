@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 from radar.comparison.openapi.operations import Operation, normalize_path
 from radar.comparison.openapi.references import Unresolved
-from radar.comparison.openapi.schemas import SchemaRef, schema_findings
+from radar.comparison.openapi.schemas import media_schema_ref, schema_findings
 from radar.discovery.references import json_pointer
 from radar.domain.comparison import (
     ADDED, CHANGED, NON_BREAKING, POTENTIALLY_BREAKING, REMOVED, REQUEST, ComparisonLimitation, ContractFinding,
@@ -71,15 +71,6 @@ def _media_finding(rule, category, kind, operation, name, before, after, explana
         subject=f"request body ({name})")
 
 
-def _schema_ref(operation: Operation, media: tuple) -> SchemaRef:
-    value, url, tokens = media
-    if isinstance(value, dict) and "$ref" in value:  # a media type object is not itself referenceable; treat as unreadable
-        raise Unresolved("The media type object is a reference, which is not supported.")
-    schema = value.get("schema", {}) if isinstance(value, dict) else {}
-    return SchemaRef(operation.documents, schema, url, (*tokens, "schema") if isinstance(value, dict) and "schema" in value
-                     else tokens)
-
-
 def compare_request_bodies(before_op: Operation, after_op: Operation, limitations: list) -> list[ContractFinding]:
     label_scope = f"{after_op.method} {after_op.declared_path}"
     try:
@@ -121,7 +112,8 @@ def compare_request_bodies(before_op: Operation, after_op: Operation, limitation
                 f"{label_scope} no longer accepts {name}. Existing clients may be sending it."))
         else:
             try:
-                old_ref, new_ref = _schema_ref(before_op, before.media[name]), _schema_ref(after_op, after.media[name])
+                old_ref = media_schema_ref(before_op.documents, before.media[name])
+                new_ref = media_schema_ref(after_op.documents, after.media[name])
             except Unresolved as error:
                 limitations.append(ComparisonLimitation(
                     "schema_unresolved", f"The {name} request body of {label_scope} could not be read: {error}",
