@@ -1,0 +1,3 @@
+{
+  "rationale": "2XX and 200 are different keys: nothing is guessed."
+}

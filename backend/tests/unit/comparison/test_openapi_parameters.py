@@ -114,10 +114,10 @@ def test_parameter_results_are_deterministic_and_serializable():
     json.dumps(result_to_dict(first))
 
 
-def test_coverage_includes_parameters_and_request_bodies_but_not_responses():
+def test_coverage_includes_parameters_bodies_and_responses_but_is_never_complete():
     coverage = compare(CONTRACT, copy.deepcopy(CONTRACT)).coverage
-    assert {'parameters', 'request bodies'} <= set(coverage.assessed) and coverage.complete is False
-    assert 'response schemas' in coverage.not_assessed
+    assert {'parameters', 'request bodies', 'responses'} <= set(coverage.assessed) and coverage.complete is False
+    assert 'response headers and links' in coverage.not_assessed
 
 
 # --- reference expansion ---------------------------------------------------------------------------

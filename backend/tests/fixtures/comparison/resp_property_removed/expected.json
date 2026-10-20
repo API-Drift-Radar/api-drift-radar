@@ -1,0 +1,12 @@
+{
+  "findings": [
+    {
+      "rule_id": "schema.property_removed",
+      "method": "GET",
+      "path": "/pets",
+      "category": "potentially_breaking",
+      "target": "response:200:application/json|/name"
+    }
+  ],
+  "limitations": []
+}

@@ -1,0 +1,11 @@
+{
+  "findings": [
+    {
+      "rule_id": "operation.added",
+      "method": "GET",
+      "path": "/owners",
+      "category": "non_breaking_under_rules"
+    }
+  ],
+  "limitations": []
+}
