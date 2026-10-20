@@ -1,7 +1,7 @@
 {
   "description": "Existing clients do not send a new required property.",
   "result": {
-    "ruleset_version": "request-schemas-1",
+    "ruleset_version": "schemas-1",
     "findings": [
       {
         "key": "schema.property_added|POST|/pets|request-body:application/json|/ownerId",
@@ -31,7 +31,7 @@
         "code": "scope_not_assessed",
         "scope": "contract",
         "blocks_classification": false,
-        "explanation": "Not assessed yet: response schemas, media-type encoding, documentation (descriptions, examples, deprecation), path-level and operation-level servers, callbacks. No findings in this result does not mean the rest of the contract is unchanged."
+        "explanation": "Not assessed yet: response headers and links, media-type encoding, documentation (descriptions, examples, deprecation), path-level and operation-level servers, callbacks. No findings in this result does not mean the rest of the contract is unchanged."
       }
     ],
     "coverage": {
@@ -40,10 +40,11 @@
         "operations",
         "servers",
         "parameters",
-        "request bodies"
+        "request bodies",
+        "responses"
       ],
       "not_assessed": [
-        "response schemas",
+        "response headers and links",
         "media-type encoding",
         "documentation (descriptions, examples, deprecation)",
         "path-level and operation-level servers",

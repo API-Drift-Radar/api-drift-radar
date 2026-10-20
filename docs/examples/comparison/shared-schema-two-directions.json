@@ -1,0 +1,87 @@
+{
+  "description": "One schema change, two directions, two classifications: safe for what clients send, risky for what they receive.",
+  "result": {
+    "ruleset_version": "schemas-1",
+    "findings": [
+      {
+        "key": "schema.type_changed|GET|/pets|response:200:application/json|/age",
+        "rule_id": "schema.type_changed",
+        "category": "potentially_breaking",
+        "change_kind": "changed",
+        "direction": "response",
+        "method": "GET",
+        "path": "/pets",
+        "before_present": true,
+        "after_present": true,
+        "before_value": [
+          "integer"
+        ],
+        "after_value": [
+          "number"
+        ],
+        "before_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/components/schemas/Pet/properties/age"
+        },
+        "after_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/components/schemas/Pet/properties/age"
+        },
+        "explanation": "At `age`: The accepted type changed from integer to number. Clients may now receive values they were not written to handle.",
+        "subject": "response 200 (application/json) > age"
+      },
+      {
+        "key": "schema.type_changed|POST|/pets|request-body:application/json|/age",
+        "rule_id": "schema.type_changed",
+        "category": "non_breaking_under_rules",
+        "change_kind": "changed",
+        "direction": "request",
+        "method": "POST",
+        "path": "/pets",
+        "before_present": true,
+        "after_present": true,
+        "before_value": [
+          "integer"
+        ],
+        "after_value": [
+          "number"
+        ],
+        "before_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/components/schemas/Pet/properties/age"
+        },
+        "after_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/components/schemas/Pet/properties/age"
+        },
+        "explanation": "At `age`: The accepted type changed from integer to number. Clients that send values the old schema allowed are still accepted.",
+        "subject": "request body (application/json) > age"
+      }
+    ],
+    "limitations": [
+      {
+        "code": "scope_not_assessed",
+        "scope": "contract",
+        "blocks_classification": false,
+        "explanation": "Not assessed yet: response headers and links, media-type encoding, documentation (descriptions, examples, deprecation), path-level and operation-level servers, callbacks. No findings in this result does not mean the rest of the contract is unchanged."
+      }
+    ],
+    "coverage": {
+      "complete": false,
+      "assessed": [
+        "operations",
+        "servers",
+        "parameters",
+        "request bodies",
+        "responses"
+      ],
+      "not_assessed": [
+        "response headers and links",
+        "media-type encoding",
+        "documentation (descriptions, examples, deprecation)",
+        "path-level and operation-level servers",
+        "callbacks"
+      ]
+    }
+  }
+}

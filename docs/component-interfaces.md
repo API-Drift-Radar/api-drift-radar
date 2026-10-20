@@ -1075,7 +1075,7 @@ it, installed outside the checkout.
 - **No retention.** Nothing is ever deleted, so history and contract files grow with every changed contract.
 
 
-## Contract comparison: operations, parameters and request bodies (issue #11, increments 1 to 3a)
+## Contract comparison: operations, parameters, request bodies and responses (issue #11, increments 1 to 3b)
 
 ```python
 from radar.comparison.openapi import compare_contracts, result_to_dict
@@ -1083,7 +1083,7 @@ result = compare_contracts(before_package, after_package)   # two ValidatedContr
 ```
 
 - **Perspective:** a client that calls the API. Findings are potential risk under Radar's rules, not proof of breakage.
-- **Rules (ruleset `request-schemas-1`):** `operation.removed` is `potentially_breaking`; `operation.added` is
+- **Rules (ruleset `schemas-1`):** `operation.removed` is `potentially_breaking`; `operation.added` is
   `non_breaking_under_rules`; `servers.changed` is `uncertain`. A renamed path is a removal plus an addition. Path
   parameter names are normalized (`/pets/{id}` equals `/pets/{petId}`).
 - **Parameter rules** (`direction: request`, only for operations present in both contracts; a new or removed operation
@@ -1102,7 +1102,14 @@ result = compare_contracts(before_package, after_package)   # two ValidatedContr
   `non_breaking_under_rules`), `request_body.removed` (`potentially_breaking`), `request_body.required_changed`,
   `request_body.media_added` (`non_breaking_under_rules`), `request_body.media_removed` (`potentially_breaking`). Media
   types are compared case-insensitively. For a media type present in both, the schemas are compared with the schema rules.
-- **Schema rules** (`schema.*`, in `schemas.py`; request direction is wired in, the engine also implements response):
+- **Response rules** (`direction: response`): responses are matched by status (case-insensitive: `2XX` and `200` are
+  different keys; `default` is its own key), then by media type. `response.removed` is `potentially_breaking` for a `2xx`
+  status (the success outcome clients rely on) and `uncertain` for any other; `response.added` is `uncertain`;
+  `response.media_removed` is `potentially_breaking`; `response.media_added` is `uncertain`. Schemas under a status and
+  media type present in both are compared with the schema rules for the response direction. A schema shared by a request
+  and a response is reported once per direction (the scope in the key and `direction` differ). Unreadable responses are a
+  limitation (`response_unresolved`, `schema_unresolved`). Response headers and links are not assessed.
+- **Schema rules** (`schema.*`, in `schemas.py`; used for both directions):
 
   | change | sent (request) | received (response) |
   |---|---|---|
@@ -1130,11 +1137,12 @@ result = compare_contracts(before_package, after_package)   # two ValidatedContr
   path, `before_present`/`after_present` (absence is never a null value), `before_value`/`after_value`, and a
   `before_location`/`after_location` (`document_url` plus JSON Pointer; a path item reached through `$ref` is located in
   the document that defines it).
-- **Limitations and coverage:** `coverage.complete` is false while request bodies, response schemas and documentation are
-  unassessed, so an empty `findings` list never means "unchanged". Limitations also name unresolved path items,
+- **Limitations and coverage:** `coverage.complete` is false while response headers and links, media-type encoding, documentation
+  and callbacks are unassessed, so an empty `findings` list never means "unchanged". Limitations also name unresolved path items,
   ambiguous path templates, webhooks, and inputs that are `unconfirmed` or a `directory_copy` (the comparator still
   compares; monitoring decides whether to alert).
 - **Measured:** `python -m radar.comparison.openapi.evaluation` scores the labeled fixtures in
   `backend/tests/fixtures/comparison/` (detection precision/recall, classification accuracy). The labels are written
   from the rules, and the fixture count is small, so it demonstrates the rules, not real-world accuracy.
-- **Examples:** `docs/examples/comparison/mixed-changes.json` and `request-body-property-added.json`, checked by a test.
+- **Examples:** `docs/examples/comparison/mixed-changes.json`, `request-body-property-added.json` and
+  `shared-schema-two-directions.json`, checked by a test.
