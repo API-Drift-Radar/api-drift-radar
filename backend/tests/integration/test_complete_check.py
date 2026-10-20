@@ -4,6 +4,9 @@ Each acceptance criterion of issue #10 that concerns successful checks has a
 test class here.
 """
 
+import errno
+import os
+import stat
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -435,6 +438,30 @@ class DetailTests(CompleteCheckTestCase):
 
 class InterruptedWriteTests(CompleteCheckTestCase):
     """Acceptance: interrupted writes do not leave a successful record pointing to missing or incomplete content."""
+
+    @unittest.skipIf(os.name == "nt", "Windows cannot sync directories; storage skips it there")
+    def test_failed_directory_sync_fails_the_save_and_keeps_the_reference(self):
+        """Regression (PR #18 review): a directory sync error must not let the check succeed."""
+        first = self.capture(INITIAL)
+        check = self.store.begin_check(self.source.id)
+        real_fsync = os.fsync
+
+        def fsync(descriptor):
+            if stat.S_ISDIR(os.fstat(descriptor).st_mode):
+                raise OSError(errno.EIO, "simulated disk failure")
+            return real_fsync(descriptor)
+
+        with patch.object(contracts.os, "fsync", fsync):
+            with self.assertRaises(StoreError):
+                self.store.complete_check(
+                    check.id, outcome=CHANGED, package=make_package(ROOT_V2), normalized=NORM_V2,
+                    normalization_version=RULES, before_snapshot_id=first.snapshot_id,
+                    changes=[ADDED_POST],
+                )
+        self.assertEqual(self.store.get_check(check.id).status, RUNNING)
+        self.assertEqual(self.latest(), first.snapshot_id)
+        self.assertEqual(len(self.store.list_snapshots(self.source.id)), 1)
+        self.assertEqual(self.store.list_changes(source_id=self.source.id), [])
 
     def test_failure_while_writing_files_records_nothing(self):
         check = self.store.begin_check(self.source.id)

@@ -28,6 +28,7 @@ SQLite records that refer to bundles are written elsewhere, and only after
 ``put`` has returned.
 """
 
+import errno
 import hashlib
 import json
 import os
@@ -96,12 +97,23 @@ class ContractFiles:
         )
 
         final = self._path(fingerprint)
-        if os.path.isdir(final):
-            self.verify(fingerprint)  # Reuse only content that is intact.
-            return fingerprint
+        if not os.path.isdir(final):
+            self._write(final, documents, normalized, manifest)
+        self.verify(fingerprint)  # Reuse only content that is intact.
 
+        # The bundle's name must be on disk before any record refers to it,
+        # whichever process renamed it into place: a writer that crashed
+        # right after its rename may not have synced it.
         try:
-            os.makedirs(self.directory, mode=0o700, exist_ok=True)
+            _sync_directory(self.directory)
+        except OSError as error:
+            raise StoreError(f"Could not save contract content to disk: {error}") from error
+        return fingerprint
+
+    def _write(self, final, documents, normalized, manifest):
+        """Write a new bundle under a temporary name, sync it, and rename it to ``final``."""
+        try:
+            _create_directory(self.directory)
         except OSError as error:
             raise StoreError(f"Could not create {self.directory}: {error}") from error
 
@@ -131,15 +143,11 @@ class ContractFiles:
                 # Another writer stored the same content first; theirs is kept.
             else:
                 incoming = None
-                _sync_directory(self.directory)
         except OSError as error:
             raise StoreError(f"Could not store contract content: {error}") from error
         finally:
             if incoming is not None:
                 shutil.rmtree(incoming, ignore_errors=True)
-
-        self.verify(fingerprint)
-        return fingerprint
 
     def remove_abandoned(self, older_than=ABANDONED_AFTER_SECONDS, now=None):
         """Delete ``.incoming-*`` directories left by writes that crashed.
@@ -377,15 +385,51 @@ def _write_synced(path, data):
         os.fsync(file.fileno())
 
 
+# Errors meaning the file system cannot sync a directory at all, rather than
+# that a sync failed. Some file systems (for example certain network or FUSE
+# ones) report these; any other error is a real I/O failure.
+_SYNC_NOT_SUPPORTED = frozenset(
+    code
+    for code in (getattr(errno, name, None) for name in ("EINVAL", "ENOTSUP", "EOPNOTSUPP"))
+    if code is not None
+)
+
+
 def _sync_directory(directory):
-    """Persist directory entries. Best effort; Windows cannot fsync directories."""
+    """Make a directory's entries durable: names created, renamed or removed in it.
+
+    Skipped on Windows, which cannot open a directory to sync it, and
+    tolerated where the file system reports that directory sync is not
+    supported. Any other failure is a genuine I/O error and raises OSError.
+    """
     if os.name == "nt":
         return
+    descriptor = os.open(directory, os.O_RDONLY)
     try:
-        descriptor = os.open(directory, os.O_RDONLY)
-        try:
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
-    except OSError:
-        pass
+        os.fsync(descriptor)
+    except OSError as error:
+        if error.errno not in _SYNC_NOT_SUPPORTED:
+            raise
+    finally:
+        os.close(descriptor)
+
+
+def _create_directory(directory):
+    """Create ``directory`` and any missing parents, durably.
+
+    A new directory only survives a power failure once the directory that
+    contains it is synced, so each newly created one is synced in its parent.
+    """
+    missing = []
+    current = os.path.abspath(directory)
+    while not os.path.isdir(current):
+        missing.append(current)
+        parent = os.path.dirname(current)
+        if parent == current:
+            break
+        current = parent
+    if not missing:
+        return
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    for path in missing:
+        _sync_directory(os.path.dirname(path))

@@ -1,6 +1,8 @@
+import errno
 import hashlib
 import json
 import os
+import stat
 import tempfile
 import unittest
 from pathlib import Path
@@ -417,6 +419,92 @@ class RemoveAbandonedTests(ContractFilesTestCase):
             self.assertEqual(self.files.remove_abandoned(), 1)
         self.assertTrue(stuck.exists())
         self.assertFalse(removable.exists())
+
+
+def failing_directory_sync(code, only=None):
+    """An os.fsync that fails with ``code`` for directories (or only for ``only``)."""
+    real_fsync = os.fsync
+
+    def fsync(descriptor):
+        info = os.fstat(descriptor)
+        if stat.S_ISDIR(info.st_mode) and (
+            only is None or (info.st_dev, info.st_ino) == only
+        ):
+            raise OSError(code, os.strerror(code))
+        return real_fsync(descriptor)
+
+    return fsync
+
+
+@unittest.skipIf(os.name == "nt", "Windows cannot sync directories; storage skips it there")
+class DirectorySyncTests(ContractFilesTestCase):
+    """Regression tests for PR #18 review: directory syncs must not fail silently."""
+
+    def test_a_failed_directory_sync_is_an_error(self):
+        with patch.object(contracts.os, "fsync", failing_directory_sync(errno.EIO)):
+            with self.assertRaises(StoreError):
+                self.put()
+        self.assertFalse([name for name in self.entries() if not name.startswith(".")])
+
+    def test_a_failed_sync_after_the_rename_is_an_error_and_a_retry_succeeds(self):
+        self.dir.mkdir()
+        info = os.stat(self.dir)
+        with patch.object(
+            contracts.os, "fsync",
+            failing_directory_sync(errno.EIO, only=(info.st_dev, info.st_ino)),
+        ):
+            with self.assertRaises(StoreError):
+                self.put()
+        # The bundle is complete in place, but was not reported as saved.
+        # The next attempt reuses it and syncs its name before returning.
+        fingerprint = self.put()
+        self.assertEqual(self.files.read(fingerprint).original, ROOT)
+
+    def test_a_file_system_without_directory_sync_is_tolerated(self):
+        for code in sorted(contracts._SYNC_NOT_SUPPORTED):
+            with self.subTest(errno=errno.errorcode.get(code, code)):
+                with patch.object(contracts.os, "fsync", failing_directory_sync(code)):
+                    fingerprint = self.put(normalized=NORMALIZED + str(code).encode())
+                self.assertTrue(self.files.exists(fingerprint))
+
+    def record_syncs(self):
+        synced = []
+        real = contracts._sync_directory
+
+        def record(directory):
+            synced.append(os.path.abspath(directory))
+            real(directory)
+
+        patcher = patch.object(contracts, "_sync_directory", side_effect=record)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return synced
+
+    def test_new_directories_are_synced_in_their_parents(self):
+        data = self.dir.parent / "new-data"
+        files = ContractFiles(data / "contracts")
+        synced = self.record_syncs()
+        files.put("openapi.yaml", {"openapi.yaml": ROOT}, NORMALIZED, VERSION)
+        self.assertIn(os.path.abspath(self.dir.parent), synced)  # holds new-data/
+        self.assertIn(os.path.abspath(data), synced)             # holds contracts/
+
+    def test_an_existing_directory_is_not_synced_in_its_parent_again(self):
+        self.put()
+        synced = self.record_syncs()
+        self.put(normalized=b"{}")
+        self.assertNotIn(os.path.abspath(self.dir.parent), synced)
+
+    def test_a_reused_bundle_is_synced_before_it_is_returned(self):
+        self.put()
+        synced = self.record_syncs()
+        self.put()
+        self.assertEqual(synced, [os.path.abspath(self.dir)])
+
+    def test_a_directory_that_cannot_be_created_durably_is_an_error(self):
+        files = ContractFiles(self.dir.parent / "fresh" / "contracts")
+        with patch.object(contracts.os, "fsync", failing_directory_sync(errno.EIO)):
+            with self.assertRaisesRegex(StoreError, "Could not create"):
+                files.put("openapi.yaml", {"openapi.yaml": ROOT}, NORMALIZED, VERSION)
 
 
 if __name__ == "__main__":
