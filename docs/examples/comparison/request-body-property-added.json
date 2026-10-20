@@ -26,6 +26,26 @@
         "subject": "request body (application/json) > ownerId"
       }
     ],
+    "finding_groups": [
+      {
+        "rule_id": "schema.property_added",
+        "category": "potentially_breaking",
+        "direction": "request",
+        "count": 1,
+        "operation_count": 1,
+        "operations": [
+          "POST /pets"
+        ],
+        "before_location": null,
+        "after_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/paths/~1pets/post/requestBody/content/application~1json/schema/properties/ownerId"
+        },
+        "subject": "request body (application/json) > ownerId",
+        "example_key": "schema.property_added|POST|/pets|request-body:application/json|/ownerId",
+        "explanation": "The required property `ownerId` is newly declared. Existing clients do not send it, so they may be rejected."
+      }
+    ],
     "limitations": [
       {
         "code": "scope_not_assessed",

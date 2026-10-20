@@ -54,6 +54,50 @@
         "subject": "request body (application/json) > age"
       }
     ],
+    "finding_groups": [
+      {
+        "rule_id": "schema.type_changed",
+        "category": "potentially_breaking",
+        "direction": "request",
+        "count": 1,
+        "operation_count": 1,
+        "operations": [
+          "POST /pets"
+        ],
+        "before_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/paths/~1pets/post/requestBody/content/application~1json/schema/properties/age"
+        },
+        "after_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/paths/~1pets/post/requestBody/content/application~1json/schema/properties/age"
+        },
+        "subject": "request body (application/json) > age",
+        "example_key": "schema.type_changed|POST|/pets|request-body:application/json|/age",
+        "explanation": "At `age` the type changed from integer to string, which are not compatible. Existing clients are likely affected."
+      },
+      {
+        "rule_id": "documentation.changed",
+        "category": "documentation_only",
+        "direction": "none",
+        "count": 1,
+        "operation_count": 1,
+        "operations": [
+          "POST /pets"
+        ],
+        "before_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/paths/~1pets/post/requestBody/content/application~1json/schema/properties/age/description"
+        },
+        "after_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/paths/~1pets/post/requestBody/content/application~1json/schema/properties/age/description"
+        },
+        "subject": "request body (application/json) > age > description",
+        "example_key": "documentation.changed|POST|/pets|request-body:application/json|/age|description",
+        "explanation": "The description of the schema at `age` changed. This is documentation; it does not change what the API accepts or returns."
+      }
+    ],
     "limitations": [
       {
         "code": "scope_not_assessed",

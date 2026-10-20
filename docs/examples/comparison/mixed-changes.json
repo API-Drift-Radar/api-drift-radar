@@ -94,6 +94,84 @@
         "subject": null
       }
     ],
+    "finding_groups": [
+      {
+        "rule_id": "operation.removed",
+        "category": "potentially_breaking",
+        "direction": "none",
+        "count": 1,
+        "operation_count": 1,
+        "operations": [
+          "DELETE /pets/{id}"
+        ],
+        "before_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/paths/~1pets~1{id}/delete"
+        },
+        "after_location": null,
+        "subject": null,
+        "example_key": "operation.removed|DELETE|/pets/{}",
+        "explanation": "DELETE /pets/{id} is no longer declared. Existing clients calling this operation may be affected."
+      },
+      {
+        "rule_id": "operation.added",
+        "category": "non_breaking_under_rules",
+        "direction": "none",
+        "count": 1,
+        "operation_count": 1,
+        "operations": [
+          "GET /owners"
+        ],
+        "before_location": null,
+        "after_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/paths/~1owners/get"
+        },
+        "subject": null,
+        "example_key": "operation.added|GET|/owners",
+        "explanation": "GET /owners is newly declared. Existing clients do not depend on it, so it does not affect them."
+      },
+      {
+        "rule_id": "documentation.changed",
+        "category": "documentation_only",
+        "direction": "none",
+        "count": 1,
+        "operation_count": 1,
+        "operations": [
+          "GET /pets"
+        ],
+        "before_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/paths/~1pets/get/summary"
+        },
+        "after_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/paths/~1pets/get/summary"
+        },
+        "subject": "GET /pets > summary",
+        "example_key": "documentation.changed|GET|/pets|operation|summary",
+        "explanation": "The summary of GET /pets changed. This is documentation; it does not change what the API accepts or returns."
+      },
+      {
+        "rule_id": "servers.changed",
+        "category": "uncertain",
+        "direction": "none",
+        "count": 1,
+        "operation_count": 0,
+        "operations": [],
+        "before_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/servers"
+        },
+        "after_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/servers"
+        },
+        "subject": null,
+        "example_key": "servers.changed",
+        "explanation": "The declared servers changed. Effective request URLs may have moved even where the declared paths are the same; this comparison does not resolve effective URLs."
+      }
+    ],
     "limitations": [
       {
         "code": "scope_not_assessed",

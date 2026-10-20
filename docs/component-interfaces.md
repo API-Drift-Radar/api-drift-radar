@@ -1075,7 +1075,7 @@ it, installed outside the checkout.
 - **No retention.** Nothing is ever deleted, so history and contract files grow with every changed contract.
 
 
-## Contract comparison (issue #11, increments 1 to 4)
+## Contract comparison (issue #11, increments 1 to 5)
 
 ```python
 from radar.comparison.openapi import compare_contracts, result_to_dict
@@ -1151,8 +1151,39 @@ result = compare_contracts(before_package, after_package)   # two ValidatedContr
   servers, callbacks, security requirements and tags are unassessed, so an empty `findings` list never means "unchanged". Limitations also name unresolved path items,
   ambiguous path templates, webhooks, and inputs that are `unconfirmed` or a `directory_copy` (the comparator still
   compares; monitoring decides whether to alert).
-- **Measured:** `python -m radar.comparison.openapi.evaluation` scores the labeled fixtures in
-  `backend/tests/fixtures/comparison/` (detection precision/recall, classification accuracy). The labels are written
-  from the rules, and the fixture count is small, so it demonstrates the rules, not real-world accuracy.
+- **Grouped view:** a schema shared by many operations is reported once per operation (right for the operation a person
+  is looking at), so one change can appear dozens of times. `result_to_dict` also returns `finding_groups`: findings
+  with the same rule, category, direction, definition locations and values merged into one entry with `count`,
+  `operation_count` and the first operations. Presentation should use the groups; `findings` stays the full list.
+- **Measured:** `python -m radar.comparison.openapi.evaluation` scores two sets of labeled fixtures and prints, for each,
+  detection precision and recall, classification accuracy, a confusion matrix over the four categories (plus
+  `unexpected` and `missed`), counts of `uncertain` results and of each limitation; `--json` gives the same as a
+  machine-readable report with per-rule figures, and the exit status is 1 on any mismatch. A zero denominator is `null`,
+  never 1.0. `backend/tests/fixtures/comparison/` (157 cases) is the development set, built alongside the rules.
+  `backend/tests/fixtures/comparison_holdout/` (25 realistic or awkward cases) was labeled before the engine was run on
+  it; the first run matched 32 of 33 labeled findings, and the one miss was a label spelling a header key in its display
+  case while keys lowercase header names (the rule and category were right). Both sets have the same author as the
+  rules, so this is a blind check by one person, not independent validation, and the sets are small: they show the
+  rules behave as documented, not real-world accuracy.
+- **Try it on two files:** `python -m radar.comparison.openapi before.yaml after.yaml [--json] [--limit N]` prints the
+  distinct changes, what was and was not compared, and each kind of limitation once with a count. Exit status: 0 no
+  findings, 1 findings, 2 unusable input. Files are single-file contracts; a `$ref` to another file is a limitation.
+- **A real contract pair (manual, needs network, not in CI):** GitHub's `api.github.com` descriptions for API versions
+  2022-11-28 and 2026-03-10 (two 13 MB files) compare in about 1.5 s using about 265 MB. The result was 1631 findings
+  that group into 279 distinct changes (128 potentially breaking, 11 non-breaking under rules, 127 documentation only, 13
+  uncertain), 811 of the findings being the same few dozen removed response properties (such as `has_downloads` and
+  `master_branch`) repeated per operation. Those removals match deprecated GitHub fields, but this was a sanity check by
+  inspection, not a labeled measurement.
+- **Storage handoff (for #10):** the comparator takes `ValidatedContractPackage` objects and does not care how they were
+  obtained. To rebuild one after a restart, storage must keep, for the root document and every referenced document, the
+  exact bytes, the URL (`source_url`) and the media type; the package's `openapi_version`; and from the candidate its
+  `source_url`, `discovery_method`, `discovery_source`, `source_kind` and the matching `evidence` (whether a package is
+  confirmed is derived from that evidence, see `is_confirmed`). `parsed_contract` is `parse_document(root bytes).value`.
+  A test reloads every fixture package this way and requires an identical result. The result (`result_to_dict`) is plain
+  JSON; storage attaches it to the two snapshot ids and owns persistent record ids. A finding's `key` is deterministic
+  and free of timestamps, so the same finding in two checks can be recognised; it is not unique across checks.
+  Not built, and not needed by the comparator: a separate "normalized contract" representation. Raw byte identity,
+  semantic equality and finding identity are separate things; the comparator only needs the first to rebuild the
+  package. If storage wants to persist a normalized form, that is a new interface to agree.
 - **Examples:** `docs/examples/comparison/mixed-changes.json`, `request-body-property-added.json`,
   `shared-schema-two-directions.json` and `documentation-and-structure.json`, checked by a test.

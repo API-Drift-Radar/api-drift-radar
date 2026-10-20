@@ -58,6 +58,50 @@
         "subject": "request body (application/json) > age"
       }
     ],
+    "finding_groups": [
+      {
+        "rule_id": "schema.type_changed",
+        "category": "potentially_breaking",
+        "direction": "response",
+        "count": 1,
+        "operation_count": 1,
+        "operations": [
+          "GET /pets"
+        ],
+        "before_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/components/schemas/Pet/properties/age"
+        },
+        "after_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/components/schemas/Pet/properties/age"
+        },
+        "subject": "response 200 (application/json) > age",
+        "example_key": "schema.type_changed|GET|/pets|response:200:application/json|/age",
+        "explanation": "At `age`: The accepted type changed from integer to number. Clients may now receive values they were not written to handle."
+      },
+      {
+        "rule_id": "schema.type_changed",
+        "category": "non_breaking_under_rules",
+        "direction": "request",
+        "count": 1,
+        "operation_count": 1,
+        "operations": [
+          "POST /pets"
+        ],
+        "before_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/components/schemas/Pet/properties/age"
+        },
+        "after_location": {
+          "document_url": "https://api.acme.com/openapi.json",
+          "pointer": "/components/schemas/Pet/properties/age"
+        },
+        "subject": "request body (application/json) > age",
+        "example_key": "schema.type_changed|POST|/pets|request-body:application/json|/age",
+        "explanation": "At `age`: The accepted type changed from integer to number. Clients that send values the old schema allowed are still accepted."
+      }
+    ],
     "limitations": [
       {
         "code": "scope_not_assessed",
