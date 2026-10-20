@@ -37,7 +37,8 @@ def record_check(store, source_id, package, compare=compare_stored):
         else:
             try:
                 reference = store.read_contract(before.id)
-                kinds = {"before_source_kind": before.provenance.get("source_kind", "provider"),
+                kinds = {"snapshot_documents": store.snapshot_documents(before.id),
+                         "before_source_kind": before.provenance.get("source_kind", "provider"),
                          "after_source_kind": package.candidate.source_kind}
                 changes, limitations = compare(reference, normalized, version, **kinds)
             except Exception as error:
@@ -177,15 +178,15 @@ def test_a_change_the_comparison_does_not_report_is_changed_with_no_change_recor
         assert store.get_check(second.id).status == CHANGED and store.list_changes(check_id=second.id) == []
 
 
-def test_a_reference_the_comparison_cannot_read_fails_the_check_and_keeps_the_reference(data):
+def test_a_reference_with_an_unknown_version_is_rebuilt_from_its_originals(data):
     source = new_source(data)
     with Store(data) as store:
         old = store.begin_check(source)
         legacy = store.complete_check(old.id, outcome=INITIAL, package=build_package(pets(1)), normalized=b"legacy bytes",
                                       normalization_version="legacy-1")
         second = record_check(store, source, build_package(pets(2)))
-        assert (second.status, second.failure_stage, second.failure_reason) == (FAILED, "comparison", "comparison_failed")
-        assert store.latest_snapshot(source).id == legacy.snapshot_id
+        assert second.status == CHANGED and store.list_changes(check_id=second.id)
+        assert store.get_check(second.id).before_snapshot_id == legacy.snapshot_id
 
 
 def test_a_directory_copy_reference_is_noted_in_the_stored_limitations(data):
@@ -206,3 +207,58 @@ def test_a_slow_clock_does_not_matter(data):
     with Store(data) as store:
         record_check(store, source, first)
         assert record_check(store, source, later).status == UNCHANGED
+
+
+def test_the_same_contract_from_another_address_is_unchanged(data):
+    source = new_source(data)
+    with Store(data) as store:
+        record_check(store, source, build_package(pets(1), url="https://api.acme.com/openapi.json"))
+        second = record_check(store, source, build_package(pets(1), url="https://cdn.acme.net/specs/openapi.yaml"))
+    with Store(data) as store:
+        assert (store.get_check(second.id).status, store.list_changes(check_id=second.id)) == (UNCHANGED, [])
+
+
+def test_the_same_contract_with_a_referenced_document_from_another_address_is_unchanged(data):
+    contract = pets(1)
+    contract["paths"]["/owners"] = {"$ref": "paths/owners.json"}
+    owners = {"get": {"responses": {"200": {"description": "ok"}}}}
+    source = new_source(data)
+    with Store(data) as store:
+        record_check(store, source, build_package(
+            contract, url="https://api.acme.com/openapi.json", referenced={"https://api.acme.com/paths/owners.json": owners}))
+        second = record_check(store, source, build_package(
+            contract, url="https://cdn.acme.net/v1/spec.json", referenced={"https://cdn.acme.net/v1/paths/owners.json": owners}))
+    with Store(data) as store:
+        assert (store.get_check(second.id).status, store.list_changes(check_id=second.id)) == (UNCHANGED, [])
+
+
+def test_a_normalization_upgrade_rebuilds_the_reference_from_the_originals(data, monkeypatch):
+    from radar.comparison.openapi import stored
+    source = new_source(data)
+    with Store(data) as store:
+        record_check(store, source, build_package(pets(1)))
+    monkeypatch.setattr(stored, "NORMALIZATION_VERSION", "openapi-canonical-2")
+    monkeypatch.setattr(stored, "SUPPORTED_VERSIONS", frozenset({"openapi-canonical-2"}))
+    with Store(data) as store:
+        same = record_check(store, source, build_package(pets(1)))
+        changed = record_check(store, source, build_package(pets(2)))
+    with Store(data) as store:
+        assert store.get_check(same.id).status == CHANGED  # the version differs, so the bytes are new; nothing failed
+        assert store.list_changes(check_id=same.id) == []
+        assert store.get_check(changed.id).status == CHANGED and store.list_changes(check_id=changed.id)
+        assert store.latest_snapshot(source).id == changed.snapshot_id
+
+
+def test_an_upgrade_without_the_originals_fails_the_check_and_keeps_the_reference(data, monkeypatch):
+    from radar.comparison.openapi import stored
+    source = new_source(data)
+    with Store(data) as store:
+        first = record_check(store, source, build_package(pets(1)))
+    monkeypatch.setattr(stored, "NORMALIZATION_VERSION", "openapi-canonical-2")
+    monkeypatch.setattr(stored, "SUPPORTED_VERSIONS", frozenset({"openapi-canonical-2"}))
+    with Store(data) as store:
+        failed = record_check(store, source, build_package(pets(2)),
+                              compare=lambda reference, normalized, version, **kinds: stored.compare_stored(
+                                  reference, normalized, version, **{k: v for k, v in kinds.items() if k != "snapshot_documents"}))
+    with Store(data) as store:
+        assert store.get_check(failed.id).status == FAILED and store.latest_snapshot(source).id == first.snapshot_id

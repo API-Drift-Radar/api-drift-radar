@@ -20,7 +20,9 @@ unconfirmed one never becomes a snapshot), so the rebuilt packages count as conf
 
 from datetime import datetime, timezone
 import json
+import posixpath
 from typing import Any
+from urllib.parse import urljoin, urlsplit
 
 from radar.comparison.openapi.compare import RULESET_VERSION, compare_contracts
 from radar.discovery.validation import parse_document
@@ -47,18 +49,46 @@ def _canonical(value: Any) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
 
+_ROOT = "@root"  # the root document's key: its own name (openapi.json or openapi.yaml) is not part of the contract
+_BASE = "https://stored.invalid/contract/"  # a scheme whose relative references resolve
+_EXTERNAL = "https://stored.invalid/external/"
+
+
+def _key(url: str, root_url: str) -> str:
+    """A document's place relative to the root, so where the contract was fetched from does not matter."""
+    root, this = urlsplit(root_url), urlsplit(url)
+    if (this.scheme, this.netloc) != (root.scheme, root.netloc):
+        return f"//{this.netloc}{this.path}" + (f"?{this.query}" if this.query else "")
+    key = posixpath.relpath(this.path or "/", posixpath.dirname(root.path) or "/")
+    return key + (f"?{this.query}" if this.query else "")
+
+
+def _rebuilt_url(key: str, depth: int) -> str:
+    """The address a document has once rebuilt: relative references between documents still resolve."""
+    root_directory = _BASE + "d/" * depth
+    if key == _ROOT:
+        return root_directory + "root"
+    if key.startswith("//"):
+        return _EXTERNAL + key[2:]
+    return urljoin(root_directory, key)
+
+
 def normalize_contract(package: ValidatedContractPackage) -> tuple[bytes, str]:
     """Canonical bytes and a version for a package. Deterministic; the package is not modified.
 
-    A referenced document that cannot be parsed is left out, exactly as the comparison treats an uncaptured one.
+    Documents are keyed by their place relative to the root and the root's own address is left out, so only the
+    contract's content decides the bytes: the same contract fetched from a CDN, or as JSON rather than YAML, is the
+    same. (A reference back to the root document by file name is therefore not followed when rebuilt.) A referenced
+    document that cannot be parsed is left out, exactly as the comparison treats an uncaptured one.
     """
-    documents = {package.root_document.source_url: package.parsed_contract}
+    root_url = package.root_document.source_url
+    documents = {_ROOT: package.parsed_contract}
     for document in package.referenced_documents:
         parsed = parse_document(document.content)
         if parsed.ok:
-            documents[document.source_url] = parsed.value
+            documents[_key(document.source_url, root_url)] = parsed.value
     payload = {"format": FORMAT, "normalization_version": NORMALIZATION_VERSION,
-               "openapi": package.openapi_version, "root": package.root_document.source_url, "documents": documents}
+               "openapi": package.openapi_version, "documents": documents}
     return _canonical(payload), NORMALIZATION_VERSION
 
 
@@ -72,16 +102,44 @@ def package_from_normalized(normalized: bytes, *, source_kind: str = "provider")
         raise ValueError("The normalized contract was not produced by normalize_contract.")
     if payload.get("normalization_version") not in SUPPORTED_VERSIONS:
         raise ValueError(f"Normalization version {payload.get('normalization_version')!r} is not supported.")
-    root, documents = payload.get("root"), payload.get("documents")
-    if not isinstance(root, str) or not isinstance(documents, dict) or not isinstance(documents.get(root), dict):
+    documents = payload.get("documents")
+    if not isinstance(documents, dict) or not isinstance(documents.get(_ROOT), dict):
         raise ValueError("The normalized contract has no readable root document.")
+    depth = max((key.count("../") for key in documents if not key.startswith("//") and key != _ROOT), default=0)
+    urls = {key: _rebuilt_url(key, depth) for key in documents}
+    root = urls[_ROOT]
     candidate = ContractCandidate(
         root, "stored_snapshot", root, source_kind=source_kind,
         evidence=(MatchingEvidence("provenance", "A stored snapshot, which is only ever a confirmed contract.", root, "match"),))
-    captured = lambda url: CapturedDocument(url, _canonical(documents[url]), _EPOCH, "application/json")  # noqa: E731
+    captured = lambda key: CapturedDocument(urls[key], _canonical(documents[key]), _EPOCH, "application/json")  # noqa: E731
     return ValidatedContractPackage(
-        candidate, captured(root), tuple(captured(url) for url in sorted(documents) if url != root), documents[root],
-        str(payload.get("openapi") or documents[root].get("openapi", "")))
+        candidate, captured(_ROOT), tuple(captured(key) for key in sorted(documents) if key != _ROOT), documents[_ROOT],
+        str(payload.get("openapi") or documents[_ROOT].get("openapi", "")))
+
+
+def package_from_originals(reference, snapshot_documents, *, source_kind: str = "provider") -> ValidatedContractPackage:
+    """A package rebuilt from a stored contract's original documents, as discovery would have captured it.
+
+    `snapshot_documents` is `store.snapshot_documents(snapshot_id)`: it says where each stored file came from.
+    Raises ValueError if the originals cannot be read.
+    """
+    by_path = {d.path: d for d in snapshot_documents}
+    root = next((d for d in snapshot_documents if d.is_root), None)
+    if root is None or root.path not in reference.documents:
+        raise ValueError("The stored contract has no readable original root document.")
+    parsed = parse_document(reference.documents[root.path])
+    if not parsed.ok or not isinstance(parsed.value, dict):
+        raise ValueError("The stored original root document cannot be parsed.")
+    candidate = ContractCandidate(
+        root.source_url, "stored_snapshot", root.source_url, source_kind=source_kind,
+        evidence=(MatchingEvidence("provenance", "A stored snapshot, which is only ever a confirmed contract.",
+                                   root.source_url, "match"),))
+    referenced = tuple(
+        CapturedDocument(d.source_url, reference.documents[d.path], d.retrieved_at, d.media_type)
+        for d in snapshot_documents if not d.is_root and d.path in reference.documents and d.path in by_path)
+    return ValidatedContractPackage(
+        candidate, CapturedDocument(root.source_url, reference.documents[root.path], root.retrieved_at, root.media_type),
+        referenced, parsed.value, str(parsed.value.get("openapi", "")))
 
 
 def _split(explanation: str) -> tuple[str, str | None]:
@@ -128,16 +186,28 @@ def limitation_to_entry(limitation: ComparisonLimitation) -> dict:
             "blocks_classification": limitation.blocks_classification}
 
 
-def compare_stored(reference, normalized: bytes, normalization_version: str, *, before_source_kind: str = "provider",
+def compare_stored(reference, normalized: bytes, normalization_version: str, *, snapshot_documents=None,
+                   before_source_kind: str = "provider",
                    after_source_kind: str = "provider") -> tuple[list[ChangeInput], list[dict]]:
     """Compare a stored reference (a `StoredContract`) with a newly normalized contract.
+
+    The reference is read from its normalized form while that version is still supported. After a normalization
+    upgrade it is rebuilt from the stored originals and normalized again with the current rules, so both sides always
+    use the same version; that needs `snapshot_documents=store.snapshot_documents(reference_snapshot.id)`.
 
     Returns `(changes, limitations)` in the shapes `Store.complete_check` takes. Raises ValueError if either side
     cannot be read, which the runner records as a failed comparison.
     """
-    before = package_from_normalized(reference.normalized, source_kind=before_source_kind)
-    after = package_from_normalized(normalized, source_kind=after_source_kind)
     if normalization_version not in SUPPORTED_VERSIONS:
         raise ValueError(f"Normalization version {normalization_version!r} is not supported.")
+    if reference.normalization_version in SUPPORTED_VERSIONS:
+        before = package_from_normalized(reference.normalized, source_kind=before_source_kind)
+    else:
+        if snapshot_documents is None:
+            raise ValueError(f"Normalization version {reference.normalization_version!r} is not supported, and the "
+                             "stored originals were not given to rebuild it.")
+        original = package_from_originals(reference, snapshot_documents, source_kind=before_source_kind)
+        before = package_from_normalized(normalize_contract(original)[0], source_kind=before_source_kind)
+    after = package_from_normalized(normalized, source_kind=after_source_kind)
     result = compare_contracts(before, after)
     return [to_change_input(f) for f in result.findings], [limitation_to_entry(l) for l in result.limitations]

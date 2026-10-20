@@ -889,7 +889,8 @@ def record_check(store, source_id, outcome, normalize, compare, usage=None):
         else:
             try:
                 reference = store.read_contract(before.id)
-                changes, limitations = compare(reference, normalized, version)
+                changes, limitations = compare(
+                    reference, normalized, version, snapshot_documents=store.snapshot_documents(before.id))
             except Exception as error:
                 return failed("comparison", error)
             same = reference.normalized == normalized and before.normalization_version == version
@@ -1178,12 +1179,17 @@ result = compare_contracts(before_package, after_package)   # two ValidatedContr
   `compare(reference, normalized, version) -> (changes, limitations)`. `radar.comparison.openapi.stored` provides both
   as `normalize_contract` and `compare_stored`.
   - `normalize_contract(package)` returns canonical JSON (sorted keys, no timestamps) of the root document and every
-    captured referenced document that parses, with the version `openapi-canonical-1`. A capture that differs only in
-    file formatting or key order gives identical bytes, so storage records `unchanged`. A change the comparison does not
+    captured referenced document that parses, with the version `openapi-canonical-1`. Documents are keyed by their
+    place relative to the root and no address is kept, so a capture that differs only in file formatting, key order or
+    the URL it was fetched from (a CDN, or the JSON rather than the YAML copy) gives identical bytes, and storage
+    records `unchanged`. (A reference back to the root document by file name is not followed when rebuilt.) A change the comparison does not
     report (for example reordering a `required` list) still changes the bytes: that check is `changed` with no change
     records.
-  - `compare_stored(reference, normalized, version, *, before_source_kind="provider", after_source_kind="provider")`
-    rebuilds both sides from their normalized bytes alone (it never reads the original documents) and returns
+  - `compare_stored(reference, normalized, version, *, snapshot_documents=None, before_source_kind="provider",
+    after_source_kind="provider")` rebuilds both sides from normalized bytes. When the reference was normalized with
+    a version that is no longer supported (after a rule change), it instead rebuilds the reference from its stored
+    original documents and normalizes it with the current rules, so a normalization upgrade never leaves a source stuck
+    on failed checks; that needs `snapshot_documents=store.snapshot_documents(before.id)`. It returns
     `ChangeInput` records, in the comparison's order, and a list of limitation entries
     (`{code, scope, explanation, blocks_classification}`) for `complete_check`. Pass a snapshot's
     `provenance["source_kind"]` as `before_source_kind` to have a directory copy noted as a limitation. It raises
