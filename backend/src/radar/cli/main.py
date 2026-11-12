@@ -1,4 +1,4 @@
-"""Command-line entry point: ``radar baseline URL`` and ``radar check URL``.
+"""Command-line entry point: ``radar baseline URL``, ``radar check URL`` and ``radar monitor ...``.
 
 This module only parses commands, coordinates the other components, and
 prints results. Fetching, extraction, comparison, and file storage live in
@@ -12,6 +12,7 @@ from radar.comparison import ChangeKind, compare_extracted, extract_structure
 
 from radar.storage.baseline import load_baseline, save_baseline
 from radar.cli.fetch import fetch_json
+from radar.cli import monitor
 
 DEFAULT_BASELINE_FILE = "baseline.json"
 
@@ -42,6 +43,8 @@ def build_parser():
     )
     check.add_argument("url", help="HTTP or HTTPS URL that returns a JSON object")
 
+    monitor.add_parser(commands)
+
     for command in (baseline, check):
         command.add_argument(
             "--baseline",
@@ -55,6 +58,8 @@ def build_parser():
 def main(argv=None):
     """Run the CLI and return the exit code."""
     args = build_parser().parse_args(argv)
+    if args.command == "monitor":
+        return monitor.main(args)
     try:
         if args.command == "baseline":
             return run_baseline(args)

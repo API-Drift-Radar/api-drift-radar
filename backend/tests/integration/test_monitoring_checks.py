@@ -11,11 +11,11 @@ import pytest
 from radar.comparison.openapi.evaluation import build_package
 from radar.comparison.openapi.stored import compare_stored
 from radar.domain.discovery import DiscoveryAttempt, DiscoveryOutcome, DiscoveryStatus
-from radar.monitoring.checks import MANUAL, SCHEDULED, CheckSkipped, run_check
+from radar.monitoring.checks import MANUAL, SCHEDULED, CheckSkipped, request_check, run_check, run_request
 from radar.monitoring.retry import NO_RETRY, RetryPolicy
 from radar.monitoring.schedule import close_interrupted, due_sources, next_due
 from radar.storage.identifiers import utc_now
-from radar.storage.records import (AMBIGUOUS, CHANGED, FAILED, INITIAL, RUNNING, UNCHANGED, UNCONFIRMED)
+from radar.storage.records import AMBIGUOUS, CHANGED, FAILED, INITIAL, UNCHANGED, UNCONFIRMED
 from radar.storage.repository import Store
 
 LOCATOR = "https://api.acme.com"
@@ -326,3 +326,81 @@ def test_only_scheduled_idle_sources_are_due(data, source):
         store.begin_check(source)  # running: not due again while it runs
         due = {s.id for s in due_sources(store, utc_now() + timedelta(days=1))}
     assert due == {never_checked} and manual_only not in due
+
+
+# Queued checks: the id is returned at once and the runner executes the check later.
+
+def test_a_queued_check_returns_its_id_at_once_and_runs_later_with_that_id(data, source):
+    with Store(data) as store:
+        request = request_check(store, source, MANUAL)
+        assert store.list_checks(source) == []  # nothing has run yet
+    with Store(data) as store:
+        result = run_request(store, store.get_check_request(request.check_id), discover=sequence(validated(1)),
+                             sleep=Sleeps())
+    stored = read(data, request.check_id)
+    assert result.id == request.check_id and stored.status == INITIAL and stored.detail["trigger"] == MANUAL
+
+
+def test_queueing_while_a_check_runs_is_skipped_and_names_that_check(data, source):
+    with Store(data) as store:
+        running = store.start_check(source)
+        assert request_check(store, source) == CheckSkipped(source, MANUAL, running.id)
+
+
+def test_a_queued_check_waits_while_another_check_of_its_source_runs(data, source):
+    with Store(data) as store:
+        request = request_check(store, source)
+        store.begin_check(source)  # a check started outside the queue
+        assert run_request(store, request, discover=sequence(validated(1))) is None
+        assert store.get_check_request(request.check_id).pending
+
+
+# A chosen contract URL is captured as chosen, and never silently replaced.
+
+CHOSEN = "https://api.acme.com/v2/openapi.json"
+
+
+def test_a_chosen_contract_is_captured_even_when_discovery_alone_would_not_confirm_it(data):
+    with Store(data) as store:
+        source = store.add_source(LOCATOR, {"contract_url": CHOSEN}).id
+    outcome = DiscoveryOutcome(DiscoveryStatus.UNCONFIRMED, package=build_package(pets(1), url=CHOSEN, confirmed=False))
+    assert read(data, check(data, source, discover=sequence(outcome)).id).status == INITIAL
+
+
+def test_a_chosen_contract_that_disappears_fails_instead_of_switching(data):
+    with Store(data) as store:
+        source = store.add_source(LOCATOR, {"contract_url": CHOSEN}).id
+    first = check(data, source, discover=sequence(DiscoveryOutcome(
+        DiscoveryStatus.VALIDATED, package=build_package(pets(1), url=CHOSEN))))
+    elsewhere = DiscoveryOutcome(DiscoveryStatus.VALIDATED, package=build_package(pets(2), url=URL))
+    stored = read(data, check(data, source, discover=sequence(elsewhere)).id)
+    assert (stored.status, stored.failure_stage, stored.failure_reason) == (FAILED, "fetch", "chosen_contract_unavailable")
+    assert reference(data, source) == first.snapshot_id
+
+
+def test_a_chosen_contract_is_picked_out_of_an_ambiguous_result(data):
+    with Store(data) as store:
+        source = store.add_source(LOCATOR, {"contract_url": CHOSEN}).id
+    outcome = DiscoveryOutcome(DiscoveryStatus.AMBIGUOUS, packages=(build_package(pets(2), url=URL),
+                                                                    build_package(pets(1), url=CHOSEN)))
+    assert read(data, check(data, source, discover=sequence(outcome)).id).status == INITIAL
+
+
+def test_a_paused_source_is_not_due_but_keeps_its_interval_and_can_be_checked_manually(data, source):
+    with Store(data) as store:
+        store.update_source_config(source, {"interval_minutes": 60, "paused": True})
+        assert due_sources(store, utc_now() + timedelta(days=1)) == []
+    assert read(data, check(data, source, MANUAL, discover=sequence(validated(1))).id).status == INITIAL
+    with Store(data) as store:
+        store.update_source_config(source, {"interval_minutes": 60})
+        assert [s.id for s in due_sources(store, utc_now() + timedelta(hours=2))] == [source]
+
+
+def test_stopping_with_ctrl_c_records_the_check_as_interrupted(data, source):
+    def stopped(source):
+        raise KeyboardInterrupt
+    with pytest.raises(KeyboardInterrupt):
+        check(data, source, discover=stopped)
+    with Store(data) as store:
+        (stored,) = store.list_checks(source)
+    assert (stored.status, stored.failure_stage, stored.failure_reason) == (FAILED, "interrupted", "stopped")

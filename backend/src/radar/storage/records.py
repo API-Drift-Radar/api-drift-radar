@@ -41,6 +41,11 @@ FAILURE_STAGES = frozenset(
     }
 )
 
+# What asked for a check. Recorded with check requests.
+MANUAL = "manual"
+SCHEDULED = "scheduled"
+TRIGGERS = frozenset({MANUAL, SCHEDULED})
+
 # Which side of an API exchange a change affects.
 REQUEST = "request"
 RESPONSE = "response"
@@ -141,6 +146,21 @@ class CheckRun:
     @property
     def succeeded(self):
         return self.status in SUCCESS_OUTCOMES
+
+
+@dataclass(frozen=True)
+class CheckRequest:
+    """A check that was asked for. Its check run has the same id once it starts."""
+
+    check_id: str
+    source_id: str
+    kind: str  # MANUAL or SCHEDULED
+    requested_at: datetime
+    started_at: Optional[datetime]  # None while it waits
+
+    @property
+    def pending(self):
+        return self.started_at is None
 
 
 @dataclass(frozen=True)

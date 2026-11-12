@@ -1,13 +1,14 @@
 """When sources are due, and what to do when Radar starts.
 
-A source is scheduled when its configuration has `interval_minutes` (a positive number); without it, it is only
-checked manually. It is due when it has never been checked, or when its latest check started at least one
+A source is scheduled when its configuration has `interval_minutes` (a positive number) and is not `paused`;
+without an interval it is only checked manually. Pausing keeps the interval, so resuming restores the schedule;
+a paused source can still be checked manually. It is due when it has never been checked, or when its latest check started at least one
 interval ago. The interval is measured from the latest check of any trigger, so a manual check also resets it.
 
 Missed runs: Radar does not catch up slot by slot. A source that missed several runs while Radar was down is
 due once at startup, and its next run is one interval after that check.
 
-This module only decides; the loop that calls `run_check` for due sources is chosen separately (#12 discussion).
+This module only decides; `radar.monitoring.runner` runs the due checks.
 """
 
 from datetime import datetime, timedelta
@@ -16,10 +17,13 @@ import math
 from radar.storage.records import RUNNING
 
 INTERVAL_KEY = "interval_minutes"
+PAUSED_KEY = "paused"
 
 
 def interval_of(source) -> timedelta | None:
-    """The source's check interval, or None if it is checked only manually or the setting is unusable."""
+    """The source's check interval, or None if it is paused, checked only manually, or the setting is unusable."""
+    if source.config.get(PAUSED_KEY) is True:
+        return None
     value = source.config.get(INTERVAL_KEY)
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
         return None
@@ -51,9 +55,10 @@ def due_sources(store, now: datetime):
 
 def close_interrupted(store):
     """Close checks left running by a previous Radar process as `interrupted`. Call once when the runner starts,
-    before any check runs. Returns the closed checks.
+    before any check runs. Returns the closed checks. Queued requests are kept: the runner starts them next.
 
-    Storage allows one runner per data folder: a second runner would close the first one's work this way.
+    Only call this while holding the runner lock (`radar.monitoring.runner`): another live runner's checks would
+    otherwise be closed too.
     """
     closed = []
     for check in store.list_running_checks():

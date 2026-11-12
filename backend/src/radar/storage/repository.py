@@ -40,7 +40,7 @@ from radar import config as settings
 from radar.storage import database
 from radar.storage.bundles import plan_bundle
 from radar.storage.contracts import ContractFiles
-from radar.storage.errors import ConflictError, NotFoundError, StoreError
+from radar.storage.errors import CheckInProgress, ConflictError, NotFoundError, StoreError
 from radar.storage.identifiers import (
     CHANGE,
     CHECK,
@@ -58,7 +58,9 @@ from radar.storage.records import (
     CLASSIFICATIONS,
     DIRECTIONS,
     INITIAL,
+    MANUAL,
     SUCCESS_OUTCOMES,
+    TRIGGERS,
     UNCHANGED,
     ChangeInput,
     FAILED,
@@ -66,6 +68,7 @@ from radar.storage.records import (
     FAILURE_STAGES,
     RUNNING,
     ChangeRecord,
+    CheckRequest,
     CheckRun,
     Snapshot,
     SnapshotDocument,
@@ -429,6 +432,96 @@ class Store:
             )
         ]
 
+    # Requested checks, and starting a check atomically
+
+    def request_check(self, source_id, kind=MANUAL):
+        """Ask for a check of ``source_id``; return the ``CheckRequest``.
+
+        The request's ``check_id`` is the id its check run will have, so the
+        caller can return it at once and look the check up later (with
+        ``get_check_request`` while it waits, ``get_check`` once it started).
+        A pending request for the source is returned as it is rather than
+        adding another, so repeated requests lead to one check. Raises
+        ``CheckInProgress`` if a check of the source is already running and
+        none is waiting: that check is the answer, and no second one is queued.
+        """
+        if kind not in TRIGGERS:
+            raise ValueError(f"kind must be one of {sorted(TRIGGERS)}.")
+        self.get_source(source_id)
+        check_id = new_id(CHECK)
+        with database.transaction(self._db):
+            pending = self._pending_request_row(source_id)
+            if pending is None:
+                running = self._running_check_id(source_id)
+                if running is not None:
+                    raise CheckInProgress(source_id, running)
+                self._db.execute(
+                    "INSERT INTO check_requests (check_id, source_id, kind, requested_at) "
+                    "VALUES (?, ?, ?, ?)",
+                    (check_id, source_id, kind, format_timestamp(utc_now())),
+                )
+            else:
+                check_id = pending["check_id"]
+        return self.get_check_request(check_id)
+
+    def get_check_request(self, check_id):
+        if not is_valid_id(check_id, CHECK):
+            raise NotFoundError(f"No check request with id {check_id!r}.")
+        rows = self._query("SELECT * FROM check_requests WHERE check_id = ?", (check_id,))
+        if not rows:
+            raise NotFoundError(f"No check request with id {check_id!r}.")
+        return _check_request(rows[0])
+
+    def list_pending_requests(self):
+        """Requests whose check has not started, oldest first."""
+        return [
+            _check_request(row)
+            for row in self._query(
+                "SELECT * FROM check_requests WHERE started_at IS NULL "
+                "ORDER BY requested_at, rowid",
+                (),
+            )
+        ]
+
+    def start_check(self, source_id, *, check_id=None, started_at=None):
+        """Start a check of ``source_id`` unless one is already running; return it as ``running``.
+
+        Unlike ``begin_check``, the test and the start are one transaction, so
+        two processes cannot both start a check of the same source: the second
+        gets ``CheckInProgress``. With ``check_id``, starts that pending
+        request, which must belong to ``source_id``. Without it, a pending
+        request of the source is started if there is one (this check
+        fulfils it); otherwise the check gets a new id.
+        """
+        started = format_timestamp(started_at if started_at is not None else utc_now())
+        self.get_source(source_id)
+        if check_id is not None:
+            request = self.get_check_request(check_id)
+            if request.source_id != source_id:
+                raise ValueError(f"Request {check_id} is for another source.")
+        with database.transaction(self._db):
+            running = self._running_check_id(source_id)
+            if running is not None:
+                raise CheckInProgress(source_id, running)
+            if check_id is None:
+                pending = self._pending_request_row(source_id)
+                check_id = pending["check_id"] if pending is not None else None
+            elif self._db.execute(
+                "SELECT started_at FROM check_requests WHERE check_id = ?", (check_id,)
+            ).fetchone()["started_at"] is not None:
+                raise ConflictError(f"Request {check_id} has already started.")
+            run_id = check_id or new_id(CHECK)
+            self._db.execute(
+                "INSERT INTO check_runs (id, source_id, status, started_at) VALUES (?, ?, ?, ?)",
+                (run_id, source_id, RUNNING, started),
+            )
+            if check_id is not None:
+                self._db.execute(
+                    "UPDATE check_requests SET started_at = ? WHERE check_id = ?",
+                    (started, check_id),
+                )
+        return self.get_check(run_id)
+
     # Snapshots and contract content
 
     def get_snapshot(self, snapshot_id):
@@ -523,6 +616,20 @@ class Store:
             raise ValueError("Outcome is 'unchanged' but the normalized content differs.")
         if outcome == CHANGED and same_content:
             raise ValueError("Outcome is 'changed' but the normalized content is identical.")
+
+    def _pending_request_row(self, source_id):
+        return self._db.execute(
+            "SELECT * FROM check_requests WHERE source_id = ? AND started_at IS NULL",
+            (source_id,),
+        ).fetchone()
+
+    def _running_check_id(self, source_id):
+        row = self._db.execute(
+            "SELECT id FROM check_runs WHERE source_id = ? AND status = ? "
+            "ORDER BY started_at, rowid LIMIT 1",
+            (source_id, RUNNING),
+        ).fetchone()
+        return None if row is None else row["id"]
 
     def _running_check(self, check_id):
         check = self.get_check(check_id)
@@ -721,6 +828,19 @@ def _check_run(row):
         detail=json.loads(row["detail_json"]),
         limitations=json.loads(row["limitations_json"]),
     )
+
+
+def _check_request(row):
+    try:
+        return CheckRequest(
+            check_id=row["check_id"],
+            source_id=row["source_id"],
+            kind=row["kind"],
+            requested_at=parse_timestamp(row["requested_at"]),
+            started_at=_optional_time(row["started_at"]),
+        )
+    except (ValueError, TypeError, KeyError) as error:
+        raise StoreError(f"Stored check request {row['check_id']} is corrupted: {error}") from error
 
 
 @_record("snapshot")
