@@ -1304,7 +1304,9 @@ much after it is due.
 
 `radar monitor run` is the one process that executes checks for a data folder. It holds an operating-system lock
 on `<data folder>/runner.lock` (`fcntl.flock` on Linux and macOS, `msvcrt.locking` on Windows), which is released
-automatically when the process ends, even if it crashes. A second runner refuses to start.
+automatically when the process ends, even if it crashes. A second runner refuses to start. A starting runner
+waits up to 10 seconds for the lock first, because Windows releases a dead process's locks asynchronously, so a
+runner restarted right after a crash may briefly still see the lock as held.
 
 On start, while holding the lock, it closes every check left `running` as `failed`/`interrupted`/`restarted`; the
 lock guarantees those belonged to a process that is gone. Queued requests survive a restart and run first. Then

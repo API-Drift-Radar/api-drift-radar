@@ -18,6 +18,7 @@ import logging
 import os
 from pathlib import Path
 import threading
+import time
 
 from radar import config
 from radar.monitoring.checks import run_check, run_request
@@ -31,6 +32,10 @@ log = logging.getLogger(__name__)
 
 DEFAULT_POLL_SECONDS = 30
 LOCK_NAME = "runner.lock"
+# How long a starting runner waits for the lock. Windows releases a dead process's locks asynchronously, so a
+# runner restarted right after a crash may briefly still see the lock as held.
+STARTUP_LOCK_WAIT_SECONDS = 10
+_LOCK_RETRY_SECONDS = 0.1
 
 
 class RunnerBusy(RuntimeError):
@@ -45,8 +50,16 @@ class RunnerLock:
         self.path = directory / LOCK_NAME
         self._file = None
 
-    def acquire(self):
-        """Take the lock; return False (without waiting) if another process holds it."""
+    def acquire(self, wait_seconds=0):
+        """Take the lock; return False if another process still holds it after `wait_seconds` (default: no wait)."""
+        deadline = time.monotonic() + wait_seconds
+        while not self._try_acquire():
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(_LOCK_RETRY_SECONDS)
+        return True
+
+    def _try_acquire(self):
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         handle = open(self.path, "a+b")
         try:
@@ -70,7 +83,7 @@ class RunnerLock:
                 self._file = None
 
     def __enter__(self):
-        if not self.acquire():
+        if self._file is None and not self.acquire():
             raise RunnerBusy(f"Another Radar runner is using {self.path.parent}.")
         return self
 
@@ -103,12 +116,15 @@ else:
 
 
 @contextmanager
-def executing(data_directory=None):
+def executing(data_directory=None, *, lock_wait_seconds=STARTUP_LOCK_WAIT_SECONDS):
     """Hold the runner lock and an open Store, after closing checks a dead process left running.
 
-    Raises RunnerBusy if another process is executing checks in this data folder.
+    Raises RunnerBusy if another process is still executing checks in this data folder after `lock_wait_seconds`.
     """
-    with RunnerLock(data_directory), Store(data_directory) as store:
+    lock = RunnerLock(data_directory)
+    if not lock.acquire(lock_wait_seconds):
+        raise RunnerBusy(f"Another Radar runner is using {lock.path.parent}.")
+    with lock, Store(data_directory) as store:
         for check in close_interrupted(store):
             log.warning("Closed %s of %s: it was still running when Radar last stopped.", check.id, check.source_id)
         yield store

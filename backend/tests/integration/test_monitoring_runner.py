@@ -64,7 +64,7 @@ def test_only_one_process_or_object_holds_the_runner_lock(data):
     first, second = RunnerLock(data), RunnerLock(data)
     assert first.acquire() and not second.acquire()
     with pytest.raises(RunnerBusy):
-        with executing(data):
+        with executing(data, lock_wait_seconds=0):
             pass
     first.release()
     assert second.acquire()
@@ -123,7 +123,7 @@ def test_the_runner_stops_between_checks_when_asked(data, api):
 # Restart: a real process dies mid-check
 
 CRASHING_RUNNER = textwrap.dedent("""
-    import sys
+    import os, sys
     from radar.monitoring.runner import RunnerLock
     from radar.storage.repository import Store
     data, source = sys.argv[1], sys.argv[2]
@@ -131,7 +131,8 @@ CRASHING_RUNNER = textwrap.dedent("""
     assert lock.acquire()
     with Store(data) as store:
         print(store.start_check(source).id, flush=True)
-    sys.stdin.readline()   # stays in the middle of the check until killed
+    sys.stdin.readline()   # stays in the middle of the check until told to crash
+    os._exit(1)            # dies without any cleanup: the check stays running, the lock is not released by code
 """)
 
 
@@ -147,10 +148,15 @@ def test_after_a_crash_the_lock_is_free_the_check_is_closed_and_monitoring_resum
         with Store(data) as store:
             assert request_check(store, source).running_check_id == interrupted_id
     finally:
-        process.kill()  # the crash
-        process.wait(10)
-        process.stdout.close()
+        # The crash. Closing stdin makes the child call os._exit; kill() alone is not enough on Windows, where a
+        # virtual environment's python.exe is a launcher that runs the real interpreter as a separate process.
         process.stdin.close()
+        try:
+            process.wait(20)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(10)
+        process.stdout.close()
 
     with executing(data) as store:  # Radar starts again
         closed = store.get_check(interrupted_id)
@@ -240,3 +246,12 @@ def test_monitor_check_takes_over_when_the_runner_stops_while_it_waits(data, api
     monkeypatch.setattr(commands.time, "sleep", runner_goes_away)
     assert monitor(data, "check", source) == 0
     assert " initial " in capsys.readouterr().out
+
+
+def test_a_starting_runner_waits_briefly_for_a_lock_that_is_being_released(data):
+    # Windows frees a dead process's lock asynchronously; a runner restarted right away must not give up.
+    held = RunnerLock(data)
+    assert held.acquire()
+    threading.Timer(0.3, held.release).start()
+    with executing(data, lock_wait_seconds=5) as store:
+        assert store.list_running_checks() == []
