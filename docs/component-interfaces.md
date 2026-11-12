@@ -939,7 +939,8 @@ up to 64 characters);
 ### After a restart
 
 A check still `running` when Radar starts was interrupted. **Run exactly one runner per data folder**
-(see the limitations below), and close them when it starts:
+(see the limitations below; the monitoring component enforces this with a lock, see issue #12), and close
+them when it starts:
 
 ```python
 for check in store.list_running_checks():
@@ -987,6 +988,8 @@ in API JSON is the API's choice (#13).
 |---|---|
 | `add_source(locator, config=None)`, `get_source(id)`, `find_sources(locator)`, `list_sources(limit=None)`, `update_source_config(id, config)` | `Source(id, locator, config, created_at, latest_snapshot_id)` |
 | `get_check(id)`, `list_checks(source_id, limit=None)` (newest first), `list_running_checks()` | `CheckRun(id, source_id, status, started_at, finished_at, before_snapshot_id, snapshot_id, failure_stage, failure_reason, error, detail, limitations)`, with `.finished` and `.succeeded` |
+| `request_check(source_id, kind="manual")`, `get_check_request(check_id)`, `list_pending_requests()` (oldest first) | `CheckRequest(check_id, source_id, kind, requested_at, started_at)`, with `.pending`. A pending request is returned again rather than duplicated; `CheckInProgress` (a `ConflictError` with `.check_id`) when a check of the source is running. Added in #12 (migration 0002). |
+| `start_check(source_id, *, check_id=None)` | The `running` `CheckRun`. Tests and starts in one transaction, so `CheckInProgress` stops a second concurrent check of the same source. With `check_id` it starts that request; without, it fulfils the source's pending request if there is one. `begin_check` stays for callers that do not need this. |
 | `get_snapshot(id)`, `latest_snapshot(source_id)` (the current reference), `list_snapshots(source_id, limit=None)` (latest capture time first) | `Snapshot(id, source_id, fingerprint, captured_at, normalization_version, openapi_version, content_fingerprint, media_type, provenance)` |
 | `snapshot_documents(snapshot_id)` | `SnapshotDocument(snapshot_id, source_url, path, retrieved_at, media_type, is_root)`, root first |
 | `read_contract(snapshot_id)` | `StoredContract(fingerprint, entry_point, documents, normalized, normalization_version)`; `.original` is the root document's bytes |
@@ -1060,8 +1063,9 @@ it, installed outside the checkout.
 
 - **One runner per data folder.** `list_running_checks` cannot tell a crashed check from one another runner
   is still working on, so a second runner would close the first one's work as interrupted (its result is
-  then refused, not corrupted). The API and other readers may run alongside. Ownership leases can be added
-  in a later migration if several runners are needed.
+  then refused, not corrupted). The API and other readers may run alongside. Since #12 the monitoring
+  component holds an operating-system lock while it executes checks, so a second runner refuses to start.
+  Ownership leases can be added in a later migration if several runners are needed.
 - **One machine, local disk.** Storage is local SQLite plus local files. Use a persistent local disk (a
   persistent volume when containerised), not a network drive: SQLite locking is unreliable on network file
   systems. Shared or cloud storage is a deployment-time decision.
@@ -1213,3 +1217,151 @@ result = compare_contracts(before_package, after_package)   # two ValidatedContr
     vocabulary, as the storage section intends (the runner maps findings to storage's own type).
 - **Examples:** `docs/examples/comparison/mixed-changes.json`, `request-body-property-added.json`,
   `shared-schema-two-directions.json` and `documentation-and-structure.json`, checked by a test.
+
+
+## Check execution: manual and scheduled checks (issue #12)
+
+`radar.monitoring` runs checks: discovery (#9), comparison (#11) and storage (#10), joined through their published
+interfaces. It owns when checks run and what happens around them (retries, overlap, restarts, missed runs); it
+contains no discovery, comparison or storage rules.
+
+### Entry points
+
+| Call | What it does | Returns |
+|---|---|---|
+| `run_check(store, source_id, trigger)` | Runs a check now. `trigger` is `"manual"` or `"scheduled"`. | the finished `CheckRun`, or `CheckSkipped` |
+| `request_check(store, source_id, trigger="manual")` | Queues a check for the runner and returns at once. The request's `check_id` is the id the check will have. | `CheckRequest`, or `CheckSkipped` |
+| `run_request(store, request)` | Runs a queued check (the runner does this). | the finished `CheckRun`, or `None` if it cannot start yet |
+| `runner.run_forever(data_dir, poll_seconds=30, stop=None)` | The runner loop (`radar monitor run`). | when `stop` is set |
+| `runner.tick(store, now=None)` | One round: queued requests, then due scheduled sources. | the finished checks |
+
+All three paths run the same workflow, so manual and scheduled checks behave identically; the trigger is recorded
+in the check's `detail["trigger"]`. `CheckSkipped(source_id, trigger, running_check_id)` means a check of that source
+was already running; nothing was started or queued, and `running_check_id` is the check to follow instead.
+
+**For the HTTP API (#13):** "a manual check returns a check identifier while processing continues" is
+`request_check`. Return its `check_id` (202); `get_check_request(id)` answers "queued" until the runner starts it,
+and `get_check(id)` afterwards. The API process never executes checks itself.
+
+### What a check records
+
+| Situation | Status | Reference |
+|---|---|---|
+| First valid capture | `initial` | set to this snapshot |
+| Same normalized contract as the reference | `unchanged`, no change records | moves to this snapshot (same content) |
+| Different contract | `changed`, with its change records | moves to this snapshot |
+| Several contracts and none chosen | `ambiguous` (stage `discovery`), candidates in `detail["discovery"]` | unchanged |
+| One contract nothing confirms | `unconfirmed` (stage `discovery`) | unchanged |
+| Nothing reachable after retries | `failed`, stage `fetch`, reason `inaccessible` or `rate_limited` | unchanged |
+| Documents found, none valid | `failed`, stage `validation`, reason `rejected` | unchanged |
+| Nothing found | `failed`, stage `discovery`, reason `not_found` | unchanged |
+| A chosen contract that is no longer returned | `failed`, stage `fetch`, reason `chosen_contract_unavailable` | unchanged |
+| Normalization or comparison error | `failed`, stage `normalization` or `comparison` | unchanged |
+| A crash (a bug) | `failed` at the stage reached, reason `unexpected_error`; the error is then raised | unchanged |
+| Stopped with Ctrl+C (twice) | `failed`, stage `interrupted`, reason `stopped` | unchanged |
+| Radar died during the check | `failed`, stage `interrupted`, reason `restarted`, when the next runner starts | unchanged |
+
+If another check moves the reference while this one compares, storage refuses the save and the check compares
+again against the new reference (up to 3 times), so findings are always relative to the snapshot recorded as
+`before_snapshot_id`.
+
+### Retries, timeouts and rate limits
+
+Each discovery attempt is bounded by discovery's own limits (90 seconds and 15 requests by default). Only an
+`inaccessible` outcome is retried, and only when every unreachable source failed with a timeout, a dropped
+connection, an incomplete response, a 5xx or a 429. Anything else (404/410, a TLS error, another 4xx, an invalid
+contract) is recorded at once, because waiting will not change it.
+
+`RetryPolicy(max_attempts=3, base_delay=5, max_delay=60, rate_limit_delay=60)`: up to 3 attempts, waiting 5 s then
+10 s, or 60 s when a source answered 429. Each wait is listed in `detail["retries"]`, and `detail["discovery_attempts"]`
+counts the attempts. A check therefore takes at most about 3 × 90 s plus the waits. `NO_RETRY` turns retries off.
+
+### Overlapping checks
+
+At most one check of a source runs at a time. Storage's `start_check` tests and starts in one transaction, so this
+holds across threads and processes: a second trigger gets `CheckSkipped` naming the running check. A request
+made while one is already waiting returns the waiting one, so repeated "check now" requests run one check. Storage
+also refuses a save against a reference that moved, so even checks started by other means cannot corrupt history.
+
+### Scheduling and missed runs
+
+Source configuration (`Source.config`):
+
+| Key | Meaning |
+|---|---|
+| `interval_minutes` | Check on a schedule, this often. Without it, the source is checked manually only. |
+| `paused` | `true` stops scheduled checks but keeps `interval_minutes`, so resuming restores the schedule. Manual checks still run. |
+| `contract_url` | The contract a person chose (for example from an ambiguous result). Checks capture this URL; if discovery no longer returns it, the check fails with `chosen_contract_unavailable` instead of switching contracts. |
+| `method`, `api_version`, `product` | Matching hints passed to discovery. |
+
+A scheduled source is due when it has never been checked, or when its latest check (of any trigger) started at
+least one interval ago; a manual check therefore also resets the interval. **Missed runs are not replayed:** a
+source that missed several runs while Radar was down is due once when the runner starts, and its next run is one
+interval after that check. The runner looks for work every 30 seconds (`--poll`), so a check may start up to that
+much after it is due.
+
+### The runner and restarts
+
+`radar monitor run` is the one process that executes checks for a data folder. It holds an operating-system lock
+on `<data folder>/runner.lock` (`fcntl.flock` on Linux and macOS, `msvcrt.locking` on Windows), which is released
+automatically when the process ends, even if it crashes. A second runner refuses to start. A starting runner
+waits up to 10 seconds for the lock first, because Windows releases a dead process's locks asynchronously, so a
+runner restarted right after a crash may briefly still see the lock as held.
+
+On start, while holding the lock, it closes every check left `running` as `failed`/`interrupted`/`restarted`; the
+lock guarantees those belonged to a process that is gone. Queued requests survive a restart and run first. Then
+each round runs queued requests (oldest first) and due scheduled sources. A check that crashes is recorded and the
+round continues. The first Ctrl+C stops the runner after the check in progress; a second stops it at once and
+records that check as interrupted.
+
+`radar monitor check SOURCE` takes the lock itself when no runner is active, and otherwise queues the check and
+waits for the runner to finish it, so two processes never execute checks in one data folder.
+
+### Commands
+
+```text
+radar monitor add https://api.example.com --every 60   # monitor, every 60 minutes
+radar monitor list                                      # sources, schedule and last result
+radar monitor check SOURCE_ID                           # run now and print the result (exit 0, 1 changes, 2 failure)
+radar monitor check SOURCE_ID --queue                   # print the queued check id and return
+radar monitor status CHECK_ID                           # one check, queued or finished
+radar monitor history SOURCE_ID                         # checks, newest first
+radar monitor pause SOURCE_ID / resume SOURCE_ID
+radar monitor choose SOURCE_ID CONTRACT_URL             # pin the contract checks capture
+radar monitor run                                       # the runner; Ctrl+C to stop
+```
+
+`--data-dir DIR` (before the subcommand) selects the data folder; the default is `RADAR_DATA_DIR` or `.radar`.
+The Milestone 1 commands `radar baseline` and `radar check URL` are unchanged.
+
+### Issue #12 acceptance evidence
+
+| Criterion | Tests |
+|---|---|
+| Manual and scheduled triggers invoke the same workflow | `test_manual_and_scheduled_triggers_run_the_same_workflow_and_record_their_trigger`, `test_a_queued_check_returns_its_id_at_once_and_runs_later_with_that_id` |
+| The first valid capture establishes the initial snapshot | `test_the_first_valid_capture_establishes_the_initial_snapshot` |
+| Later captures compare against the previous valid snapshot | `test_later_captures_compare_against_the_previous_valid_snapshot_and_unchanged_adds_no_findings` |
+| A changed capture persists findings and advances the reference | `test_a_changed_capture_persists_findings_and_advances_the_reference`, `test_monitor_commands_add_check_detect_a_change_and_show_history` |
+| An unchanged capture records success without duplicate findings | `test_later_captures_compare_against_the_previous_valid_snapshot_and_unchanged_adds_no_findings` |
+| Failures preserve the previous snapshot and record the stage | `test_discovery_failures_keep_the_reference_and_record_their_stage`, `test_a_comparison_failure_keeps_the_reference`, `test_a_normalization_failure_keeps_the_reference`, `test_a_chosen_contract_that_disappears_fails_instead_of_switching` |
+| Timeouts, bounded retries and rate limits have defined behavior | `test_a_transient_failure_is_retried_with_backoff_and_then_succeeds`, `test_retries_are_bounded_and_the_last_failure_is_recorded`, `test_a_rate_limited_source_waits_longer_and_is_recorded_as_rate_limited`, `test_a_permanent_failure_is_not_retried` |
+| Overlapping checks cannot corrupt history or advance the reference inconsistently | `test_concurrent_starts_from_separate_stores_start_exactly_one`, `test_concurrent_triggers_in_one_process_run_one_check`, `test_a_reference_moved_during_comparison_is_compared_again`, `test_monitor_check_waits_for_an_active_runner_instead_of_running_beside_it` |
+| Restart and missed-schedule behavior is documented and demonstrated | this section; `test_after_a_crash_the_lock_is_free_the_check_is_closed_and_monitoring_resumes` (a real process killed mid-check), `test_a_source_that_missed_several_runs_is_due_once_at_startup` |
+
+Tests: `backend/tests/integration/test_monitoring_checks.py`, `test_monitoring_runner.py` and
+`test_check_requests.py`. Discovery is replaced by test doubles, so they use no network.
+
+### Known limitations
+
+- **`Retry-After` is not used.** Discovery reads the header but does not pass it into `DiscoveryOutcome`, so a 429
+  waits the fixed `rate_limit_delay`. Carrying it on `DiscoveryAttempt` is a small change in discovery.
+- **A chosen URL is fetched directly only when it ends in `.json`, `.yaml` or `.yml`.** Other URLs (such as
+  `/v3/api-docs`) are found through discovery's normal search; the check still accepts only the chosen contract,
+  but the search costs more requests. A discovery option to capture one URL as given would remove this.
+- **One runner per data folder, on one machine.** The lock is a local file lock; it does not coordinate runners
+  on different machines sharing a folder, which storage does not support anyway (see the storage limitations).
+- **Checks run one at a time.** A slow source delays the others in its round. Parallel checks across sources are a
+  later change; the overlap rule already holds per source.
+- **No per-source backoff across checks.** A source that keeps failing is retried within each check, then checked
+  again at its next interval like any other.
+
